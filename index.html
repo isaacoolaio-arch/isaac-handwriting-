@@ -7,11 +7,11 @@
 <meta name="description" content="AI-powered handwriting analysis — works online and offline">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="HandScript">
+<meta name="apple-mobile-web-app-title" content="Oola HandScript">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-<title>HandScript Pro</title>
+<title>Oola HandScript PRO</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -349,7 +349,7 @@ header{padding:1rem 2rem;border-bottom:1px solid var(--border);display:flex;alig
 
 <!-- INSTALL BANNER -->
 <div id="installBanner">
-  <span>📲 Install HandScript Pro for instant offline access — no browser needed!</span>
+  <span>📲 Install Oola HandScript PRO for instant offline access — no browser needed!</span>
   <button onclick="installPWA()">⬇ Install App</button>
   <button class="ib-dismiss" onclick="dismissInstall()">✕ Not now</button>
 </div>
@@ -358,7 +358,7 @@ header{padding:1rem 2rem;border-bottom:1px solid var(--border);display:flex;alig
   <div class="brand">
     <div class="logo">✍️</div>
     <div>
-      <h1>HandScript <em style="font-style:normal;font-size:.65em;color:var(--gold);font-family:'Outfit',sans-serif;font-weight:700;">PRO</em></h1>
+      <h1>Oola HandScript <em style="font-style:normal;font-size:.65em;color:var(--gold);font-family:'Outfit',sans-serif;font-weight:700;">PRO</em></h1>
       <p>AI handwriting analysis · Works online &amp; offline</p>
     </div>
   </div>
@@ -718,7 +718,7 @@ window.addEventListener('beforeinstallprompt',e=>{
 });
 window.addEventListener('appinstalled',()=>{
   document.getElementById('installBanner').classList.remove('show');
-  showToast('✅ HandScript installed! Find it in your apps.');
+  showToast('✅ Oola HandScript PRO installed! Find it in your apps.');
 });
 async function installPWA(){
   if(!deferredInstallPrompt)return;
@@ -889,7 +889,7 @@ Return polished JSON only.`;
 async function callClaude(system,userMsg,apiKey){
   const res=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',max_tokens:4000,system,
       messages:[{role:'user',content:[
@@ -1180,7 +1180,7 @@ function exportAs(fmt){
   }
   if(fmt==='html'){
     const body=document.getElementById('fmtPrev').innerHTML;
-    dl(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HandScript Export</title><style>body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;background:#faf6ef;color:#0f0c07;padding:0 1.5rem;line-height:1.85}table{width:100%;border-collapse:collapse}th{background:#ede5d4;color:#8b4513;padding:.5rem .8rem;text-align:left;border-bottom:2px solid #d8ccb4}td{padding:.4rem .8rem;border-bottom:1px solid #f0e8d8}.foot{margin-top:2rem;font-size:.72rem;color:#a09080;text-align:center;border-top:1px solid #d8ccb4;padding-top:.7rem}</style></head><body>${body}<div class="foot">HandScript Pro · ${new Date().toLocaleDateString()}</div></body></html>`,'handscript.html','text/html');
+    dl(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Oola HandScript PRO Export</title><style>body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;background:#faf6ef;color:#0f0c07;padding:0 1.5rem;line-height:1.85}table{width:100%;border-collapse:collapse}th{background:#ede5d4;color:#8b4513;padding:.5rem .8rem;text-align:left;border-bottom:2px solid #d8ccb4}td{padding:.4rem .8rem;border-bottom:1px solid #f0e8d8}.foot{margin-top:2rem;font-size:.72rem;color:#a09080;text-align:center;border-top:1px solid #d8ccb4;padding-top:.7rem}</style></head><body>${body}<div class="foot">Oola HandScript PRO · ${new Date().toLocaleDateString()}</div></body></html>`,'handscript.html','text/html');
     showToast('Downloaded .HTML');return;
   }
   if(fmt==='pdf'){
@@ -1189,7 +1189,7 @@ function exportAs(fmt){
       const pw=doc2.internal.pageSize.getWidth(),ph=doc2.internal.pageSize.getHeight(),mg=55;
       doc2.setFillColor(237,229,212);doc2.rect(0,0,pw,52,'F');
       doc2.setFont('times','bold');doc2.setFontSize(15);doc2.setTextColor(139,69,19);
-      doc2.text('HandScript Pro Export',mg,33);
+      doc2.text('Oola HandScript PRO Export',mg,33);
       doc2.setFont('times','normal');doc2.setFontSize(9);doc2.setTextColor(107,96,80);
       doc2.text(new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}),pw-mg,33,{align:'right'});
       let y=78;const lh=16;doc2.setFont('times','normal');doc2.setFontSize(11);doc2.setTextColor(15,12,7);
@@ -1197,7 +1197,7 @@ function exportAs(fmt){
         if(y+lh>ph-mg){doc2.addPage();y=mg;}doc2.text(line,mg,y);y+=lh;
       });
       const total=doc2.internal.getNumberOfPages();
-      for(let i=1;i<=total;i++){doc2.setPage(i);doc2.setFontSize(8);doc2.setTextColor(160,140,100);doc2.text(`HandScript · Page ${i} of ${total}`,pw/2,ph-18,{align:'center'});}
+      for(let i=1;i<=total;i++){doc2.setPage(i);doc2.setFontSize(8);doc2.setTextColor(160,140,100);doc2.text(`Oola HandScript · Page ${i} of ${total}`,pw/2,ph-18,{align:'center'});}
       doc2.save('handscript.pdf');showToast('Downloaded .PDF');
     }catch(e){showToast('PDF error');}
     return;

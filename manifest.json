@@ -1,7 +1,7 @@
 {
-  "name": "HandScript Pro",
-  "short_name": "HandScript",
-  "description": "AI-powered handwriting analysis — works offline too",
+  "name": "Oola HandScript PRO",
+  "short_name": "Oola HandScript",
+  "description": "Oola HandScript PRO — AI-powered handwriting analysis, works offline too",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f7f3ec",
