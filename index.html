@@ -632,11 +632,15 @@
         <button class="action-btn" id="downloadCsvBtn" onclick="downloadCsv()" disabled>📊 .CSV</button>
         <button class="action-btn" id="clearBtn" onclick="clearOutput()" disabled>🗑️ Clear</button>
       </div>
+      <div class="action-row">
+        <button class="action-btn" onclick="testRtfDownload()" style="background:#e8f5e9;border-color:#4caf50;">🧪 Test RTF (debug)</button>
+      </div>
 
       <div class="tips" style="margin-top: auto;">
         <strong>💡 After conversion:</strong>
         Table View shows ledger ruling. Word export preserves table borders that open correctly in WordPad &amp; Word.
       </div>
+      <div id="debugArea" style="font-size:0.7rem; color:#666; background:#f5f5f5; border:1px solid #ddd; border-radius:6px; padding:0.5rem; max-height:120px; overflow:auto; display:none; font-family:monospace; white-space:pre-wrap;"></div>
     </div>
   </div>
 
@@ -886,20 +890,30 @@ Just output the transcribed text, nothing else.`;
         try {
           const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
           parsed = JSON.parse(cleaned);
+          console.log('JSON parse SUCCESS. Groups:', parsed.groups ? parsed.groups.length : 'NO groups key');
+          if (parsed.groups && parsed.groups[0]) {
+            console.log('First group keys:', Object.keys(parsed.groups[0]));
+            console.log('First group:', JSON.stringify(parsed.groups[0]));
+          }
         } catch (e) {
-          console.warn('JSON parse failed, trying text fallback parser...');
+          console.warn('JSON parse failed:', e.message);
+          console.log('Raw AI text (first 300):', text.substring(0, 300));
         }
 
         // Fallback: parse from raw text patterns
         if (!parsed || !parsed.groups || parsed.groups.length === 0) {
+          console.log('Trying text fallback parser...');
           parsed = parseTextToGroups(text);
+          console.log('Text parser result:', parsed ? (parsed.groups ? parsed.groups.length + ' groups' : 'no groups') : 'NULL');
         }
 
         if (parsed && parsed.groups && parsed.groups.length > 0) {
           tableData = parsed;
+          console.log('tableData SET with', tableData.groups.length, 'groups');
           rawText = buildRawTextFromTable(tableData);
           renderLedgerTable(tableData);
           document.getElementById('outputText').value = rawText;
+          console.log('outputText set, length:', rawText.length);
           switchView('table');
         } else {
           tableData = null;
@@ -1043,22 +1057,76 @@ Just output the transcribed text, nothing else.`;
     showToast('Downloaded as .csv!');
   }
 
+  function debugLog(msg) {
+    console.log(msg);
+    var area = document.getElementById('debugArea');
+    area.style.display = 'block';
+    area.textContent += msg + '\n';
+    area.scrollTop = area.scrollHeight;
+  }
+
+  // ============================================================
+  // TEST: Generate hardcoded RTF identical to test-simple.rtf
+  // If this produces ruling in WordPad, the format works.
+  // ============================================================
+  function testRtfDownload() {
+    var cx = [2000, 4000, 6500, 8000, 9500];
+    function hc(p) { return '\\clbrdrt\\brdrs\\brdrw15 \\clbrdrl\\brdrs\\brdrw15 \\clbrdrb\\brdrs\\brdrw15 \\clbrdrr\\brdrs\\brdrw15 \\cellx' + p + '\n'; }
+    function dc(p,bw) { return '\\clbrdrl\\brdrs\\brdrw15 \\clbrdrb\\brdrs\\brdrw' + bw + ' \\clbrdrr\\brdrs\\brdrw15 \\cellx' + p + '\n'; }
+
+    var r = '{\\rtf1\\ansi\\deff0\n';
+    r += '{\\fonttbl{\\f0 Times New Roman;}}\n';
+    r += '\\f0\\fs24 TEST RTF - if you see a table with lines, it works!\\par\n\\par\n';
+    r += '\\trowd\\trgaph108\n';
+    for (var i=0;i<5;i++) r += hc(cx[i]);
+    r += '\\intbl\\b Type\\b0\\cell\n\\intbl\\b Account\\b0\\cell\n\\intbl\\b Balance\\b0\\cell\n\\intbl\\b Units\\b0\\cell\n\\intbl\\b Amount\\b0\\cell\n\\row\n';
+    r += '\\trowd\\trgaph108\n';
+    for (var i=0;i<5;i++) r += dc(cx[i],10);
+    r += '\\intbl Closing\\cell\n\\intbl pms\\cell\n\\intbl 92531.999\\cell\n\\intbl\\cell\n\\intbl\\cell\n\\row\n';
+    r += '\\trowd\\trgaph108\n';
+    for (var i=0;i<5;i++) r += dc(cx[i],10);
+    r += '\\intbl Opening\\cell\n\\intbl\\cell\n\\intbl 92409.027-\\cell\n\\intbl\\cell\n\\intbl\\cell\n\\row\n';
+    r += '\\trowd\\trgaph108\n';
+    for (var i=0;i<5;i++) r += dc(cx[i],30);
+    r += '\\intbl\\cell\n\\intbl\\cell\n\\intbl 122.972\\cell\n\\intbl 5195\\cell\n\\intbl 68760.942-\\cell\n\\row\n';
+    r += '}\n';
+
+    console.log('TEST RTF length:', r.length);
+    console.log('TEST RTF first 200 chars:', r.substring(0, 200));
+    downloadBlob(new Blob([r], { type: 'application/rtf' }), 'TEST-ruling.rtf');
+    showToast('Test RTF downloaded — check if table appears in WordPad!');
+  }
+
   function downloadDoc() {
-    // Always try to build a table RTF
-    // First check if we already have tableData from conversion
+    document.getElementById('debugArea').textContent = '';
+    debugLog('=== Word Download ===');
+    debugLog('tableData: ' + (tableData ? 'YES, ' + (tableData.groups ? tableData.groups.length + ' groups' : 'no groups') : 'NULL'));
+
     var data = tableData;
 
-    // If not, try parsing the current output text
     if (!data || !data.groups || data.groups.length === 0) {
       var text = document.getElementById('outputText').value;
-      if (text) {
+      debugLog('Textarea length: ' + (text ? text.length : 0));
+      if (text && text.length > 0) {
+        debugLog('First 150 chars: ' + text.substring(0, 150));
         data = parseTextToGroups(text);
+        debugLog('Parser result: ' + (data ? (data.groups ? data.groups.length + ' groups found!' : 'no groups') : 'NULL - parser returned nothing'));
+      } else {
+        debugLog('ERROR: textarea is empty!');
       }
     }
 
     if (data && data.groups && data.groups.length > 0) {
-      downloadRtfTableFrom(data);
+      debugLog('>>> Generating TABLE RTF with ' + data.groups.length + ' groups');
+      try {
+        downloadRtfTableFrom(data);
+        debugLog('>>> SUCCESS - table RTF downloaded');
+      } catch(e) {
+        debugLog('>>> ERROR in RTF generation: ' + e.message);
+        downloadRtfPlain();
+      }
     } else {
+      debugLog('>>> FALLBACK: plain text RTF (no groups detected)');
       downloadRtfPlain();
     }
   }
@@ -1085,6 +1153,7 @@ Just output the transcribed text, nothing else.`;
   // NO \cf (color in cells) — keep it simple
   // ============================================================
   function downloadRtfTableFrom(tData) {
+    debugLog('RTF generator: ' + tData.groups.length + ' groups');
     // WordPad-compatible RTF — matches the exact format of test-simple.rtf
     // CRITICAL: border order must be left, bottom, right (then cellx)
     // WordPad parses sequentially and wrong order breaks rendering
@@ -1159,6 +1228,9 @@ Just output the transcribed text, nothing else.`;
     }
 
     rtf += '}\n';
+
+    console.log('RTF generated, length:', rtf.length);
+    debugLog('RTF length: ' + rtf.length + ', has \\trowd: ' + (rtf.indexOf('\\trowd')!==-1) + ', has \\cell: ' + (rtf.indexOf('\\cell')!==-1));
 
     downloadBlob(new Blob([rtf], { type: 'application/rtf' }), 'handscript-ledger.rtf');
     showToast('Downloaded with ruled lines!');
