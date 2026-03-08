@@ -1085,39 +1085,25 @@ Just output the transcribed text, nothing else.`;
   // NO \cf (color in cells) — keep it simple
   // ============================================================
   function downloadRtfTableFrom(tData) {
-    // WordPad-compatible RTF table
-    // ONLY uses: \trowd, \trgaph, \clbrdrt/b/l/r, \brdrs, \brdrw, \cellx, \intbl, \cell, \row
-    // NO \brdrcf (border color) — WordPad ignores/breaks on this
-    // NO \clcbpat (cell background) — WordPad ignores this
-    // NO \trqc — WordPad ignores this
+    // WordPad-compatible RTF — matches the exact format of test-simple.rtf
+    // CRITICAL: border order must be left, bottom, right (then cellx)
+    // WordPad parses sequentially and wrong order breaks rendering
 
     var groups = tData.groups;
-    // 5 columns: Type | Account | Balance | Units | Amount
     var cx = [2000, 4000, 6500, 8000, 9500];
-    var THIN = 10;   // thin ruled line
-    var THICK = 30;  // thick separator line
-    var MED = 15;    // medium border
 
-    // Build cell defs for one row
-    // bw = bottom border width (0 = no bottom border)
-    function cells(bw) {
-      var s = '';
-      for (var i = 0; i < 5; i++) {
-        s += '\\clbrdrl\\brdrs\\brdrw' + MED + ' ';
-        s += '\\clbrdrr\\brdrs\\brdrw' + MED + ' ';
-        if (bw > 0) {
-          s += '\\clbrdrb\\brdrs\\brdrw' + bw + ' ';
-        }
-        s += '\\cellx' + cx[i] + '\n';
-      }
-      return s;
+    // Build cell defs — ORDER MATTERS: left, [top], bottom, right, cellx
+    function headerCell(pos) {
+      return '\\clbrdrt\\brdrs\\brdrw15 \\clbrdrl\\brdrs\\brdrw15 \\clbrdrb\\brdrs\\brdrw15 \\clbrdrr\\brdrs\\brdrw15 \\cellx' + pos + '\n';
+    }
+    function dataCell(pos, bw) {
+      return '\\clbrdrl\\brdrs\\brdrw15 \\clbrdrb\\brdrs\\brdrw' + bw + ' \\clbrdrr\\brdrs\\brdrw15 \\cellx' + pos + '\n';
     }
 
     var rtf = '{\\rtf1\\ansi\\deff0\n';
     rtf += '{\\fonttbl{\\f0 Times New Roman;}}\n';
-    rtf += '\n';
 
-    // Header notes as plain text above the table
+    // Header notes
     if (tData.meta && tData.meta.header_notes) {
       tData.meta.header_notes.forEach(function(n) {
         rtf += '\\f0\\fs24 ' + escRtf(n) + '\\par\n';
@@ -1125,15 +1111,9 @@ Just output the transcribed text, nothing else.`;
       rtf += '\\par\n';
     }
 
-    // === HEADER ROW (all borders including top) ===
+    // Header row
     rtf += '\\trowd\\trgaph108\n';
-    for (var i = 0; i < 5; i++) {
-      rtf += '\\clbrdrt\\brdrs\\brdrw' + THICK + ' ';
-      rtf += '\\clbrdrl\\brdrs\\brdrw' + MED + ' ';
-      rtf += '\\clbrdrr\\brdrs\\brdrw' + MED + ' ';
-      rtf += '\\clbrdrb\\brdrs\\brdrw' + THICK + ' ';
-      rtf += '\\cellx' + cx[i] + '\n';
-    }
+    for (var i = 0; i < 5; i++) { rtf += headerCell(cx[i]); }
     rtf += '\\intbl\\b Type\\b0\\cell\n';
     rtf += '\\intbl\\b Account\\b0\\cell\n';
     rtf += '\\intbl\\b Balance\\b0\\cell\n';
@@ -1141,14 +1121,15 @@ Just output the transcribed text, nothing else.`;
     rtf += '\\intbl\\b Amount\\b0\\cell\n';
     rtf += '\\row\n';
 
-    // === DATA ROWS ===
+    // Data rows
     for (var gi = 0; gi < groups.length; gi++) {
       var g = groups[gi];
       var cat = g.closing_category || '';
       var isLast = (gi === groups.length - 1);
 
-      // -- Closing row (thin bottom) --
-      rtf += '\\trowd\\trgaph108\n' + cells(THIN);
+      // Closing row
+      rtf += '\\trowd\\trgaph108\n';
+      for (var i = 0; i < 5; i++) { rtf += dataCell(cx[i], 10); }
       rtf += '\\intbl Closing\\cell\n';
       rtf += '\\intbl ' + escRtf(cat) + '\\cell\n';
       rtf += '\\intbl ' + escRtf(g.closing_value || '') + '\\cell\n';
@@ -1156,8 +1137,9 @@ Just output the transcribed text, nothing else.`;
       rtf += '\\intbl\\cell\n';
       rtf += '\\row\n';
 
-      // -- Opening row (thin bottom) --
-      rtf += '\\trowd\\trgaph108\n' + cells(THIN);
+      // Opening row
+      rtf += '\\trowd\\trgaph108\n';
+      for (var i = 0; i < 5; i++) { rtf += dataCell(cx[i], 10); }
       rtf += '\\intbl Opening\\cell\n';
       rtf += '\\intbl\\cell\n';
       rtf += '\\intbl ' + escRtf(g.opening_value || '') + '\\cell\n';
@@ -1165,8 +1147,9 @@ Just output the transcribed text, nothing else.`;
       rtf += '\\intbl\\cell\n';
       rtf += '\\row\n';
 
-      // -- Data row (thick bottom = group separator, thin if last) --
-      rtf += '\\trowd\\trgaph108\n' + cells(isLast ? THICK : THICK);
+      // Data row — thick bottom as group separator
+      rtf += '\\trowd\\trgaph108\n';
+      for (var i = 0; i < 5; i++) { rtf += dataCell(cx[i], 30); }
       rtf += '\\intbl\\cell\n';
       rtf += '\\intbl\\cell\n';
       rtf += '\\intbl ' + escRtf(g.difference || '') + '\\cell\n';
@@ -1178,7 +1161,7 @@ Just output the transcribed text, nothing else.`;
     rtf += '}\n';
 
     downloadBlob(new Blob([rtf], { type: 'application/rtf' }), 'handscript-ledger.rtf');
-    showToast('Downloaded with ruled lines — opens in WordPad!');
+    showToast('Downloaded with ruled lines!');
   }
 
   function escRtf(str) {
