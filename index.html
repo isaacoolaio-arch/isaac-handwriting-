@@ -1074,109 +1074,97 @@ Just output the transcribed text, nothing else.`;
   // NO \cf (color in cells) — keep it simple
   // ============================================================
   function downloadRtfTable() {
-    var groups = tableData.groups;
+    // WordPad-compatible RTF table
+    // ONLY uses: \trowd, \trgaph, \clbrdrt/b/l/r, \brdrs, \brdrw, \cellx, \intbl, \cell, \row
+    // NO \brdrcf (border color) — WordPad ignores/breaks on this
+    // NO \clcbpat (cell background) — WordPad ignores this
+    // NO \trqc — WordPad ignores this
 
-    // Column positions in twips (cumulative right edges)
-    // 6 columns: Type(1200) | Category(1200) | Value(2200) | Difference(1800) | Units(1200) | Amount(2200)
-    var colPos = [1200, 2400, 4600, 6400, 7600, 9800];
+    var groups = tableData.groups;
+    // 5 columns: Type | Account | Balance | Units | Amount
+    var cx = [2000, 4000, 6500, 8000, 9500];
+    var THIN = 10;   // thin ruled line
+    var THICK = 30;  // thick separator line
+    var MED = 15;    // medium border
+
+    // Build cell defs for one row
+    // bw = bottom border width (0 = no bottom border)
+    function cells(bw) {
+      var s = '';
+      for (var i = 0; i < 5; i++) {
+        s += '\\clbrdrl\\brdrs\\brdrw' + MED + ' ';
+        s += '\\clbrdrr\\brdrs\\brdrw' + MED + ' ';
+        if (bw > 0) {
+          s += '\\clbrdrb\\brdrs\\brdrw' + bw + ' ';
+        }
+        s += '\\cellx' + cx[i] + '\n';
+      }
+      return s;
+    }
 
     var rtf = '{\\rtf1\\ansi\\deff0\n';
-    rtf += '{\\fonttbl{\\f0 Times New Roman;}{\\f1 Arial;}}\n';
-    // Color table: 0=auto, 1=blue(ruling), 2=red(margin/separator), 3=dark
-    rtf += '{\\colortbl;\\red120\\green140\\blue180;\\red180\\green40\\blue40;\\red30\\green20\\blue10;}\n';
+    rtf += '{\\fonttbl{\\f0 Times New Roman;}}\n';
     rtf += '\n';
 
-    // Title / header notes
+    // Header notes as plain text above the table
     if (tableData.meta && tableData.meta.header_notes) {
       tableData.meta.header_notes.forEach(function(n) {
-        rtf += '\\f0\\fs22\\i ' + escRtf(n) + '\\i0\\par\n';
+        rtf += '\\f0\\fs24 ' + escRtf(n) + '\\par\n';
       });
       rtf += '\\par\n';
     }
 
-    // ---- Helper: generate one row definition with borders ----
-    // borderBottom: 'blue' | 'red' | 'none'
-    function rowDef(borderBottom) {
-      var def = '\\trowd\\trgaph80\n';
-      for (var c = 0; c < 6; c++) {
-        // Left border: thick red for first col, thin blue for others
-        if (c === 0) {
-          def += '\\clbrdrl\\brdrs\\brdrw30\\brdrcf2';
-        } else {
-          def += '\\clbrdrl\\brdrs\\brdrw10\\brdrcf1';
-        }
-        // Right border: thin blue (last col also gets it to close the table)
-        def += '\\clbrdrr\\brdrs\\brdrw10\\brdrcf1';
-        // Bottom border
-        if (borderBottom === 'red') {
-          def += '\\clbrdrb\\brdrs\\brdrw20\\brdrcf2';
-        } else if (borderBottom === 'blue') {
-          def += '\\clbrdrb\\brdrs\\brdrw10\\brdrcf1';
-        }
-        // Top border (only for header)
-        // -- we'll add separately if needed
-        def += '\\cellx' + colPos[c] + '\n';
-      }
-      return def;
+    // === HEADER ROW (all borders including top) ===
+    rtf += '\\trowd\\trgaph108\n';
+    for (var i = 0; i < 5; i++) {
+      rtf += '\\clbrdrt\\brdrs\\brdrw' + THICK + ' ';
+      rtf += '\\clbrdrl\\brdrs\\brdrw' + MED + ' ';
+      rtf += '\\clbrdrr\\brdrs\\brdrw' + MED + ' ';
+      rtf += '\\clbrdrb\\brdrs\\brdrw' + THICK + ' ';
+      rtf += '\\cellx' + cx[i] + '\n';
     }
-
-    // ---- HEADER ROW ----
-    // Header has red bottom border (thick) + top border
-    rtf += '\\trowd\\trgaph80\n';
-    for (var c = 0; c < 6; c++) {
-      if (c === 0) rtf += '\\clbrdrl\\brdrs\\brdrw30\\brdrcf2';
-      else rtf += '\\clbrdrl\\brdrs\\brdrw10\\brdrcf1';
-      rtf += '\\clbrdrr\\brdrs\\brdrw10\\brdrcf1';
-      rtf += '\\clbrdrt\\brdrs\\brdrw20\\brdrcf2'; // red top
-      rtf += '\\clbrdrb\\brdrs\\brdrw20\\brdrcf2'; // red bottom
-      rtf += '\\cellx' + colPos[c] + '\n';
-    }
-    var headers = ['Type', 'Category', 'Value', 'Difference', 'Units', 'Amount'];
-    for (var h = 0; h < headers.length; h++) {
-      rtf += '\\intbl\\f1\\fs20\\b ' + headers[h] + '\\b0\\cell\n';
-    }
+    rtf += '\\intbl\\b Type\\b0\\cell\n';
+    rtf += '\\intbl\\b Account\\b0\\cell\n';
+    rtf += '\\intbl\\b Balance\\b0\\cell\n';
+    rtf += '\\intbl\\b Units\\b0\\cell\n';
+    rtf += '\\intbl\\b Amount\\b0\\cell\n';
     rtf += '\\row\n';
 
-    // ---- DATA ROWS ----
+    // === DATA ROWS ===
     for (var gi = 0; gi < groups.length; gi++) {
       var g = groups[gi];
       var cat = g.closing_category || '';
       var isLast = (gi === groups.length - 1);
 
-      // Closing row — blue bottom border
-      rtf += rowDef('blue');
-      rtf += '\\intbl\\f0\\fs22\\b Closing\\b0\\cell\n';
-      rtf += '\\intbl\\f0\\fs22\\b ' + escRtf(cat) + '\\b0\\cell\n';
-      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.closing_value || '') + '\\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl \\cell\n';
+      // -- Closing row (thin bottom) --
+      rtf += '\\trowd\\trgaph108\n' + cells(THIN);
+      rtf += '\\intbl Closing\\cell\n';
+      rtf += '\\intbl ' + escRtf(cat) + '\\cell\n';
+      rtf += '\\intbl ' + escRtf(g.closing_value || '') + '\\cell\n';
+      rtf += '\\intbl\\cell\n';
+      rtf += '\\intbl\\cell\n';
       rtf += '\\row\n';
 
-      // Opening row — blue bottom border
-      rtf += rowDef('blue');
-      rtf += '\\intbl\\f0\\fs22 Opening\\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.opening_value || '') + '\\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl \\cell\n';
+      // -- Opening row (thin bottom) --
+      rtf += '\\trowd\\trgaph108\n' + cells(THIN);
+      rtf += '\\intbl Opening\\cell\n';
+      rtf += '\\intbl\\cell\n';
+      rtf += '\\intbl ' + escRtf(g.opening_value || '') + '\\cell\n';
+      rtf += '\\intbl\\cell\n';
+      rtf += '\\intbl\\cell\n';
       rtf += '\\row\n';
 
-      // Data row (diff / units / amount) — red bottom if not last group, else blue
-      rtf += rowDef(isLast ? 'blue' : 'red');
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl \\cell\n';
-      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.difference || '') + '\\cell\n';
-      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.units || '') + '\\cell\n';
-      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.amount || '') + '\\cell\n';
+      // -- Data row (thick bottom = group separator, thin if last) --
+      rtf += '\\trowd\\trgaph108\n' + cells(isLast ? THICK : THICK);
+      rtf += '\\intbl\\cell\n';
+      rtf += '\\intbl\\cell\n';
+      rtf += '\\intbl ' + escRtf(g.difference || '') + '\\cell\n';
+      rtf += '\\intbl ' + escRtf(g.units || '') + '\\cell\n';
+      rtf += '\\intbl ' + escRtf(g.amount || '') + '\\cell\n';
       rtf += '\\row\n';
     }
 
-    // Bottom border (final thick red line)
-    rtf += '\\par\n';
-    rtf += '}';
+    rtf += '}\n';
 
     downloadBlob(new Blob([rtf], { type: 'application/rtf' }), 'handscript-ledger.rtf');
     showToast('Downloaded with ruled lines — opens in WordPad!');
