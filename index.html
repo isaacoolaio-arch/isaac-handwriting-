@@ -1044,9 +1044,20 @@ Just output the transcribed text, nothing else.`;
   }
 
   function downloadDoc() {
-    // Always try to build table RTF if we have groups
-    if (tableData && tableData.groups && tableData.groups.length > 0) {
-      downloadRtfTable();
+    // Always try to build a table RTF
+    // First check if we already have tableData from conversion
+    var data = tableData;
+
+    // If not, try parsing the current output text
+    if (!data || !data.groups || data.groups.length === 0) {
+      var text = document.getElementById('outputText').value;
+      if (text) {
+        data = parseTextToGroups(text);
+      }
+    }
+
+    if (data && data.groups && data.groups.length > 0) {
+      downloadRtfTableFrom(data);
     } else {
       downloadRtfPlain();
     }
@@ -1073,14 +1084,14 @@ Just output the transcribed text, nothing else.`;
   // NO \trqc — WordPad ignores this
   // NO \cf (color in cells) — keep it simple
   // ============================================================
-  function downloadRtfTable() {
+  function downloadRtfTableFrom(tData) {
     // WordPad-compatible RTF table
     // ONLY uses: \trowd, \trgaph, \clbrdrt/b/l/r, \brdrs, \brdrw, \cellx, \intbl, \cell, \row
     // NO \brdrcf (border color) — WordPad ignores/breaks on this
     // NO \clcbpat (cell background) — WordPad ignores this
     // NO \trqc — WordPad ignores this
 
-    var groups = tableData.groups;
+    var groups = tData.groups;
     // 5 columns: Type | Account | Balance | Units | Amount
     var cx = [2000, 4000, 6500, 8000, 9500];
     var THIN = 10;   // thin ruled line
@@ -1107,8 +1118,8 @@ Just output the transcribed text, nothing else.`;
     rtf += '\n';
 
     // Header notes as plain text above the table
-    if (tableData.meta && tableData.meta.header_notes) {
-      tableData.meta.header_notes.forEach(function(n) {
+    if (tData.meta && tData.meta.header_notes) {
+      tData.meta.header_notes.forEach(function(n) {
         rtf += '\\f0\\fs24 ' + escRtf(n) + '\\par\n';
       });
       rtf += '\\par\n';
