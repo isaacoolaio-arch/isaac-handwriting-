@@ -16,6 +16,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --ink:#0f0c07;--paper:#f7f3ec;--parchment:#ede5d4;
@@ -273,6 +274,10 @@ header{padding:1rem 2rem;border-bottom:1px solid var(--border);display:flex;alig
 .fbtn.dark .fe{color:#c8b888;}
 .fbtn.dark:hover:not(:disabled){background:#3a2a10;}
 .fbtn.hi{background:var(--gold-pale);border-color:var(--gold-lt);}
+.fbtn.success{background:#e8f7ee;border-color:#7bc99a;color:#2d7a4f;}
+.fbtn.success:hover:not(:disabled){background:#d0f0de;}
+td[contenteditable="true"]:hover{background:#fffbef;cursor:text;}
+td[contenteditable="true"]:focus{background:#fffde8;outline:2px solid var(--gold);outline-offset:-2px;}
 .statsrow{display:flex;gap:1rem;font-size:.72rem;color:var(--slate);}
 .stat{display:flex;align-items:center;gap:.3rem;}
 .sdot{width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;}
@@ -510,6 +515,7 @@ header{padding:1rem 2rem;border-bottom:1px solid var(--border);display:flex;alig
     <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:.5rem;">
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
         <button class="fbtn hi" id="bTblCsv"  onclick="exportAs('csv')"    disabled><span class="fi">📊</span><span>CSV</span></button>
+        <button class="fbtn success" id="bTblXlsx" onclick="exportTableXlsx()" disabled><span class="fi">📗</span><span>Excel</span></button>
         <button class="fbtn dark" id="bTblPdf" onclick="exportTablePdf()"  disabled><span class="fi">📕</span><span>PDF</span></button>
         <button class="fbtn" id="bTblHtml"     onclick="exportTableHtml()" disabled><span class="fi">🌐</span><span>HTML</span></button>
         <button class="fbtn" id="bTblJson"     onclick="exportAs('json')"  disabled><span class="fi">🗂️</span><span>JSON</span></button>
@@ -842,16 +848,29 @@ async function convertWithClaude(apiKey){
   try{
     showStatus('loading','Pass 1 — analysing with Claude AI…');setProgress(8);
 
-    const sys1=`You are an elite document intelligence system. Analyse this handwritten document with maximum accuracy and return STRICT JSON only (no markdown).
+    const sys1=`You are an elite document intelligence and handwriting transcription expert with 20+ years experience reading financial ledgers, account books, and handwritten records.
 
 Language: ${lang==='auto'?'auto-detect':lang}
-Expected type: ${dtype==='auto'?'auto-detect':dtype}
+Expected document type: ${dtype==='auto'?'auto-detect':dtype}
 
-Carefully read every character. For numbers: distinguish 0/O, 1/l/I, 5/S, 6/b, 8/B.
-For tables: use pipe | delimiters between columns.
+CRITICAL READING RULES — apply these carefully:
+1. NUMBERS: Carefully distinguish 0 vs O, 1 vs l vs I, 5 vs S, 6 vs b, 8 vs B, 2 vs Z, 7 vs 1
+2. COMMAS vs PERIODS: In numbers, 1,000 = one thousand; 1.000 may also = one thousand in some locales
+3. CURRENCY: Preserve all currency symbols exactly (UGX, $, £, €, Shs, /)
+4. COLUMN ALIGNMENT: Numbers in the same column must be from the same data type
+5. ROW TOTALS: If a row looks like a summary/total row, mark rowType as "total"
+6. DATES: Preserve date formats exactly as written
+7. NAMES: Preserve all names exactly including spelling
+8. ILLEGIBLE: If truly unreadable, use [?] — never guess wildly
 
-Return EXACTLY this JSON:
-{"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim text","extractionNotes":""}`;
+For financial ledgers specifically:
+- Opening/Closing balance rows → rowType: "section"
+- Total/Summary rows → rowType: "total"  
+- Regular data rows → rowType: "data"
+- Extract ALL header text above the table as headerValues
+
+Return EXACTLY this JSON (no markdown, no extra text):
+{"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim full text","extractionNotes":""}`;
 
     const r1=await callClaude(sys1,'Analyse this document completely. Return JSON only.',apiKey);
     setProgress(38);
@@ -859,20 +878,38 @@ Return EXACTLY this JSON:
     let doc=parseJSON(r1);
 
     if(passes>=2){
-      showStatus('loading','Pass 2 — verifying numbers…');
-      const sys2=`Verify this extraction against the image. Fix misread numbers and column alignment.
-Previous: ${JSON.stringify(doc,null,1)}
-Return corrected JSON only.`;
+      showStatus('loading','Pass 2 — verifying numbers & alignment…');
+      const sys2=`You are verifying a handwriting extraction. Compare the previous extraction carefully against the original image.
+
+CHECK THESE SPECIFICALLY:
+1. Are all numbers read correctly? Check each digit carefully.
+2. Are columns correctly aligned? Each row should have the same number of values.
+3. Are totals/summary rows correctly identified?
+4. Are any rows missing or duplicated?
+5. Are names and dates correct?
+
+Previous extraction: ${JSON.stringify(doc,null,1)}
+
+Return the corrected and improved JSON only. Same format, no markdown.`;
       const r2=await callClaude(sys2,'Re-examine and correct extraction errors.',apiKey);
       setProgress(68);
       doc=parseJSON(r2)||doc;
     }
 
     if(passes>=3){
-      showStatus('loading','Pass 3 — deep validation…');
-      const sys3=`Final validation. Check all arithmetic, row alignment, and totals.
-Data: ${JSON.stringify(doc,null,1)}
-Return polished JSON only.`;
+      showStatus('loading','Pass 3 — arithmetic validation & final polish…');
+      const sys3=`Final validation pass. You have the extracted data and the original image.
+
+FINAL CHECKS:
+1. Do column totals add up correctly? If not, re-read the numbers.
+2. Is the row count correct — are there missing rows?
+3. Check all multi-digit numbers one more time (most common error source).
+4. Verify opening/closing balance logic if present.
+5. Polish any unclear text with your best reading.
+
+Data to validate: ${JSON.stringify(doc,null,1)}
+
+Return the final polished JSON only. This is the output the user will see.`;
       const r3=await callClaude(sys3,'Final validation pass.',apiKey);
       setProgress(88);
       doc=parseJSON(r3)||doc;
@@ -1063,31 +1100,48 @@ function renderTable(doc){
   buildTable(headers,allRows);
   document.getElementById('stRow').style.display='flex';
   document.getElementById('stR').textContent=allRows.filter(r=>r.rowType==='data'||!r.rowType).length+' rows';
-  ['bTblCsv','bTblPdf','bTblHtml','bTblJson'].forEach(id=>document.getElementById(id).disabled=false);
+  ['bTblCsv','bTblPdf','bTblHtml','bTblJson','bTblXlsx'].forEach(id=>document.getElementById(id).disabled=false);
 }
 
 function buildTable(headers,rows){
   const wrap=document.getElementById('tWrap');
   if(!rows||rows.length===0){wrap.innerHTML='<div class="no-data"><span>No rows</span></div>';return;}
-  let html='<table><thead><tr><th onclick="sortBy(-1)"><span class="si">⇅</span></th>';
+  let html='<table><thead><tr><th style="width:32px;color:#b0a080;font-size:.7rem;">#</th><th onclick="sortBy(-1)"><span class="si">⇅</span></th>';
   headers.forEach((h,i)=>{
     const arrow=sortState.col===i?(sortState.dir===1?'↑':'↓'):'⇅';
     html+=`<th onclick="sortBy(${i})" class="${sortState.col===i?'sorted':''}">${esc(h)}<span class="si">${arrow}</span></th>`;
   });
   html+='</tr></thead><tbody>';
-  rows.forEach(row=>{
+  rows.forEach((row,ri)=>{
     const vals=row.values||[];const rt=row.rowType||'data';
     const conf=row.confidence||'high';
     html+=`<tr class="${rt==='total'||rt==='section'?'total-row':''}">`;
+    html+=`<td style="color:#b0a080;font-size:.7rem;text-align:center;">${ri+1}</td>`;
     html+=`<td><span class="conf-dot conf-${conf==='high'?'high':conf==='mid'?'mid':'low'}" title="${conf}"></span></td>`;
     headers.forEach((_,i)=>{
       const cell=vals[i]||'';
       const isNum=/^[\d,.\-+()%$£€¥₹\s]+$/.test(cell)&&cell.trim()!=='';
       const badge=getCellBadge(cell);
-      html+=`<td class="${isNum?'td-num':''}">${badge||esc(cell)}</td>`;
+      html+=`<td class="${isNum?'td-num':''}" contenteditable="true" onblur="cellEdit(${ri},${i},this)" title="Click to edit">${badge||esc(cell)}</td>`;
     });
     html+='</tr>';
   });
+
+  // Column totals row
+  const totals=headers.map((_,i)=>{
+    const nums=rows.map(r=>{const v=(r.values||[])[i]||'';const n=parseFloat(v.replace(/[,\s]/g,''));return isNaN(n)?null:n;}).filter(n=>n!==null);
+    if(nums.length>=2){const s=nums.reduce((a,b)=>a+b,0);return s%1===0?s.toLocaleString():(Math.round(s*100)/100).toLocaleString();}
+    return '';
+  });
+  const hasAnySums=totals.some(t=>t!=='');
+  if(hasAnySums){
+    html+=`<tr class="total-row" style="border-top:2px solid var(--gold);">`;
+    html+=`<td style="color:#b0a080;font-size:.65rem;text-align:center;">∑</td>`;
+    html+=`<td></td>`;
+    totals.forEach(t=>html+=`<td class="${t?'td-num':''}" style="font-weight:700;color:var(--rust);">${t||''}</td>`);
+    html+=`</tr>`;
+  }
+
   html+='</tbody></table>';wrap.innerHTML=html;
 }
 
@@ -1098,6 +1152,18 @@ function getCellBadge(cell){
   if(v==='pms')return`<span class="td-badge badge-pms">PMS</span>`;
   if(v==='ago'||v==='agp')return`<span class="td-badge badge-ago">AGO</span>`;
   return null;
+}
+
+function cellEdit(rowIdx,colIdx,el){
+  const newVal=el.textContent.trim();
+  if(allRows[rowIdx]){
+    if(!allRows[rowIdx].values)allRows[rowIdx].values=[];
+    allRows[rowIdx].values[colIdx]=newVal;
+    if(parsedDoc.tableRows&&parsedDoc.tableRows[rowIdx])parsedDoc.tableRows[rowIdx].values[colIdx]=newVal;
+    // Recalculate totals
+    buildTable(parsedDoc.tableHeaders||[],allRows);
+    showToast('✏️ Cell updated');
+  }
 }
 
 function sortBy(col){
@@ -1210,6 +1276,27 @@ function exportAs(fmt){
     dl(`MIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nSubject: ${esc(parsedDoc.documentType)||'Transcription'}\nDate: ${new Date().toUTCString()}\n\n${text}`,'handscript.eml','message/rfc822');
     showToast('Downloaded .EML');return;
   }
+}
+
+function exportTableXlsx(){
+  const hdr=parsedDoc.tableHeaders||[];
+  if(!hdr.length){showToast('No table data');return;}
+  try{
+    const wb=XLSX.utils.book_new();
+    const rows=[hdr,...(parsedDoc.tableRows||[]).map(r=>r.values||[])];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    // Style header row width
+    ws['!cols']=hdr.map(()=>({wch:16}));
+    XLSX.utils.book_append_sheet(wb,ws,parsedDoc.documentType?.slice(0,31)||'Sheet1');
+    // Add summary sheet if header values exist
+    const hv=parsedDoc.summary?.headerValues||[];
+    if(hv.length>0){
+      const sv=XLSX.utils.aoa_to_sheet([['Field','Value'],...hv.map(h=>[h.label,h.value])]);
+      XLSX.utils.book_append_sheet(wb,sv,'Summary');
+    }
+    XLSX.writeFile(wb,'oola-handscript.xlsx');
+    showToast('📊 Downloaded Excel .XLSX!');
+  }catch(e){showToast('Excel export error: '+e.message);}
 }
 
 function exportTablePdf(){
@@ -1374,7 +1461,7 @@ function hideStatus(){document.getElementById('statusBar').style.display='none';
 const EBTNS=['bTxt','bDoc','bPdf','bMd','bHtml','bCsv','bJson','bEml','bFPdf','bFHtml','bFDoc','bFMd',
   'uCopy','uClear','uUpper','uLower','uTitle','uSentence','uCamel','uSnake','uKebab','uAltern',
   'uTrim','uRmExtra','uRmEmpty','uRmNums','uRmPunct','uRmSpecial','uDedup','uSlug',
-  'uSortAZ','uSortZA','uSortNum','uRevLines','uLineNums','uRmLineNum','uBullets','uRmBullets','uStats'];
+  'uSortAZ','uSortZA','uSortNum','uRevLines','uLineNums','uRmLineNum','uBullets','uRmBullets','uStats','bTblXlsx'];
 function enableBtns(){EBTNS.forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=false;});}
 function disableBtns(){EBTNS.forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true;});}
 function showToast(m){
