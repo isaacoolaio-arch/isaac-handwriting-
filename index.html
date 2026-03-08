@@ -531,7 +531,7 @@ td[contenteditable="true"]:focus{background:#fffde8;outline:2px solid var(--gold
       <div class="tabbar">
         <button class="tab on"  id="tTab0" onclick="goTab(0)">📊 Table View</button>
         <button class="tab"     id="tTab1" onclick="goTab(1)">📝 Raw Text</button>
-        <button class="tab"     id="tTab2" onclick="goTab(2)">👁 Formatted</button>
+        <button class="tab"     id="tTab2" onclick="goTab(2)">📜 Ledger View</button>
       </div>
       <div class="statsrow" id="stRow" style="display:none;padding-bottom:.5rem;">
         <span class="stat"><span class="sdot"></span><span id="stW">0w</span></span>
@@ -1099,8 +1099,10 @@ function finishRender(doc,engine){
 
   document.getElementById('engineBadge').textContent=engine==='claude'?'☁️ Claude AI':'🖥️ Local OCR';
 
-  if(doc.hasTable&&doc.tableRows?.length>0){goTab(0);showToast('📊 Table detected!');}
-  else{goTab(1);showToast('✅ Done!');}
+  if(doc.hasTable&&doc.tableRows?.length>0){
+    goTab(2); // Go straight to Formatted (ledger view)
+    showToast('📊 Ledger extracted! Showing formatted view…');
+  } else {goTab(1);showToast('✅ Done!');}
 }
 
 function parseJSON(raw){
@@ -1329,9 +1331,61 @@ function exportAs(fmt){
     dl(csv,'handscript.csv','text/csv');showToast('Downloaded .CSV');return;
   }
   if(fmt==='doc'){
-    const e2=text.replace(/\\/g,'\\\\').replace(/\{/g,'\\{').replace(/\}/g,'\\}');
-    dl(`{\\rtf1\\ansi\\deff0\n{\\fonttbl{\\f0\\froman Times New Roman;}}\n\\f0\\fs24\\sa140\n${e2.replace(/\n/g,'\\par\n')}\n}`,'handscript.rtf','application/rtf');
-    showToast('Downloaded .RTF');return;
+    // Build proper RTF with table if we have structured data
+    const hdr=parsedDoc.tableHeaders||[];
+    const rows=parsedDoc.tableRows||[];
+    const hv=parsedDoc.summary?.headerValues||[];
+    const docType=parsedDoc.documentType||'Document';
+    const docDate=parsedDoc.summary?.date||'';
+
+    let rtf=`{\\rtf1\\ansi\\deff0\n{\\fonttbl{\\f0\\froman\\fcharset0 Times New Roman;}{\\f1\\fmodern\\fcharset0 Courier New;}}\n{\\colortbl;\\red139\\green69\\blue19;\\red30\\blue140;\\red15\\green12\\blue7;\\red184\\green131\\blue42;}\n\\paperw12240\\paperh15840\\margl1440\\margr1440\\margt1440\\margb1440\n`;
+
+    // Title
+    rtf+=`\\f0\\fs28\\b\\cf1 ${docType}\\b0\\cf3\\par\n`;
+    if(docDate)rtf+=`\\fs20\\cf4 ${docDate}\\cf3\\par\n`;
+    if(hv.length>0){
+      rtf+=`\\fs22\\b `;
+      hv.forEach(h=>{rtf+=`${h.label} = ${h.value}   `;});
+      rtf+=`\\b0\\par\n`;
+    }
+    rtf+=`\\par\n`;
+
+    if(hdr.length>0&&rows.length>0){
+      // Calculate column width (in twips, total ~9000 for margins)
+      const colW=Math.floor(8800/hdr.length);
+      // Table header
+      rtf+=`{\\trowd\\trgaph120\n`;
+      hdr.forEach((_,i)=>{rtf+=`\\cellx${(i+1)*colW}\n`;});
+      rtf+=`\\intbl\\b\\cf1\\fs18 `;
+      hdr.forEach(h=>{rtf+=`${h.replace(/[\\{}]/g,' ')}\\cell `;});
+      rtf+=`\\b0\\cf3\\row\n`;
+
+      // Data rows
+      rows.forEach(row=>{
+        const vals=row.values||[];
+        const isTotal=row.rowType==='total'||row.rowType==='section';
+        const isClosing=(vals[0]||'').toLowerCase().includes('closing');
+        const isOpening=(vals[0]||'').toLowerCase().includes('opening');
+        rtf+=`{\\trowd\\trgaph120\n`;
+        hdr.forEach((_,i)=>{rtf+=`\\cellx${(i+1)*colW}\n`;});
+        rtf+=`\\intbl `;
+        if(isTotal)rtf+=`\\b`;
+        if(isClosing)rtf+=`\\cf1`;
+        if(isOpening)rtf+=`\\cf2`;
+        rtf+=`\\fs20 `;
+        vals.forEach(v=>{rtf+=`${String(v||'').replace(/[\\{}]/g,' ')}\\cell `;});
+        if(isTotal||isClosing||isOpening)rtf+=`\\b0\\cf3`;
+        rtf+=`\\row\n}`;
+      });
+    } else {
+      // Plain text fallback
+      const e2=text.replace(/\\/g,'\\\\').replace(/\{/g,'\\{').replace(/\}/g,'\\}');
+      rtf+=`\\f1\\fs20 ${e2.replace(/\n/g,'\\par\n')}`;
+    }
+    rtf+=`\\par\\par\\f0\\fs16\\cf4 Oola HandScript PRO · ${new Date().toLocaleDateString()}\\cf3\n}`;
+
+    dl(rtf,'oola-handscript.rtf','application/rtf');
+    showToast('📝 Downloaded Word .RTF!');return;
   }
   if(fmt==='html'){
     const body=document.getElementById('fmtPrev').innerHTML;
