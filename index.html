@@ -255,8 +255,51 @@ header{padding:1rem 2rem;border-bottom:1px solid var(--border);display:flex;alig
 #outText:focus{outline:none;border-color:var(--gold);}
 #outText::placeholder{color:#c0a870;font-style:italic;}
 #fmtPrev{min-height:260px;background:white;border:1px solid var(--border);border-radius:11px;
-  padding:1.4rem 1.7rem;font-family:Georgia,serif;font-size:.88rem;line-height:1.85;
-  color:var(--ink);overflow-y:auto;max-height:480px;}
+  padding:0;font-family:Georgia,serif;font-size:.88rem;line-height:1.85;
+  color:var(--ink);overflow-y:auto;max-height:520px;}
+
+/* ── LEDGER PAPER FORMATTED VIEW ── */
+.ledger-paper{
+  background:#fdfaf3;
+  border-radius:8px;
+  padding:1.2rem 1rem;
+  font-family:'Courier New',Courier,monospace;
+  font-size:.83rem;
+  line-height:2;
+  background-image:repeating-linear-gradient(
+    to bottom,transparent,transparent calc(2em - 1px),#d8ceb0 calc(2em - 1px),#d8ceb0 2em
+  );
+  background-size:100% 2em;
+  min-height:200px;
+  position:relative;
+  overflow-x:hidden;
+}
+.ledger-paper::before{content:'';position:absolute;left:2.8rem;top:0;bottom:0;border-left:1.5px solid rgba(200,70,70,0.2);pointer-events:none;}
+.ledger-header-block{background:rgba(253,250,243,0.97);text-align:center;margin-bottom:.2rem;padding-bottom:.3rem;border-bottom:2px solid #b8832a;position:relative;z-index:1;}
+.ledger-date{font-size:.75rem;color:#8b6914;font-weight:600;letter-spacing:.05em;}
+.ledger-doc-type{font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:700;color:#8b4513;margin-bottom:.2rem;}
+.ledger-header-vals{display:flex;flex-wrap:wrap;justify-content:center;gap:1.5rem;font-size:.85rem;margin:.2rem 0;}
+.ledger-hval{display:flex;align-items:baseline;gap:.15rem;}
+.ledger-hval-label{font-weight:700;color:#8b4513;}
+.ledger-hval-eq{color:#8b6914;}
+.ledger-hval-num{font-weight:600;color:#1a1208;font-variant-numeric:tabular-nums;}
+.ledger-table-wrap{overflow-x:auto;position:relative;z-index:1;}
+.ledger-tbl{width:100%;border-collapse:collapse;font-size:.82rem;}
+.ledger-th{padding:.05rem .6rem;text-align:left;font-size:.68rem;font-weight:700;color:#8b4513;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #b8832a;background:rgba(237,229,212,0.7);white-space:nowrap;height:2em;line-height:2em;}
+.ledger-td{padding:0 .6rem;height:2em;line-height:2em;border:none;color:#1a1208;white-space:nowrap;vertical-align:middle;}
+.ledger-num{text-align:right;font-variant-numeric:tabular-nums;}
+.ledger-bold{font-weight:700;}
+.ledger-row:hover td{background:rgba(184,131,42,0.07);}
+.ledger-closing td{color:#7a2a10;font-weight:700;}
+.ledger-opening td{color:#1e3d70;}
+.ledger-total td{font-weight:700;border-top:1.5px solid #b8832a;}
+.ledger-section td{font-weight:600;background:rgba(237,229,212,0.35);}
+.ledger-divider-row .ledger-divider{height:0;padding:0;border-top:1px dashed #c8b880;}
+.ledger-lines .ledger-line{height:2em;line-height:2em;padding:0 .4rem;color:#1a1208;white-space:pre;overflow-x:visible;position:relative;z-index:1;}
+.ledger-notes{margin-top:.5rem;font-size:.72rem;color:#8b6914;border-left:3px solid var(--gold);padding:.35rem .7rem;background:rgba(253,250,243,.95);position:relative;z-index:1;}
+.ledger-extract-note{margin-top:.3rem;font-size:.66rem;color:#a09080;font-style:italic;padding:.2rem .6rem;position:relative;z-index:1;}
+
+
 
 /* ── EXPORT / TOOLS ── */
 .sec-label{font-size:.69rem;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:.07em;}
@@ -864,10 +907,13 @@ CRITICAL READING RULES — apply these carefully:
 8. ILLEGIBLE: If truly unreadable, use [?] — never guess wildly
 
 For financial ledgers specifically:
-- Opening/Closing balance rows → rowType: "section"
-- Total/Summary rows → rowType: "total"  
+- Opening/Closing balance rows → rowType: "section", put "Closing" or "Opening" as the FIRST value in the row
+- Total/Summary rows → rowType: "total"
 - Regular data rows → rowType: "data"
-- Extract ALL header text above the table as headerValues
+- Extract ALL header text above the table as headerValues (e.g. "PMS = 382.37" → label:"PMS", value:"382.37")
+- For paired Closing/Opening rows: each pair should be TWO separate rows in tableRows
+- The difference/calculation row below a pair (e.g. "122.972") → rowType: "data" with label "Difference" or blank
+- Price column (e.g. "5185", "4800") → include in its own column
 
 Return EXACTLY this JSON (no markdown, no extra text):
 {"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim full text","extractionNotes":""}`;
@@ -1191,37 +1237,80 @@ function filterTable(){
 function renderRawText(text){document.getElementById('outText').value=text;updateStats(text);}
 
 function renderFormatted(doc){
-  let html='';
-  html+=`<div style="margin-bottom:1.2rem;padding-bottom:.8rem;border-bottom:2px solid #e8d8b0;">
-    <div style="font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:700;color:var(--rust);">${esc(doc.documentType||'Document')}</div>`;
-  if(doc.summary?.date)html+=`<div style="font-size:.8rem;color:var(--slate);margin-top:.2rem;">📅 ${esc(doc.summary.date)}</div>`;
-  html+='</div>';
+  const isLedger=doc.hasTable&&doc.tableRows&&doc.tableRows.length>0;
+
+  // ── Ledger paper style ──
+  let html=`<div class="ledger-paper">`;
+
+  // Header section
+  html+=`<div class="ledger-header-block">`;
+  if(doc.summary?.date)html+=`<div class="ledger-date">${esc(doc.summary.date)}</div>`;
+  html+=`<div class="ledger-doc-type">${esc(doc.documentType||'Document')}</div>`;
+
+  // Header values (PMS=xxx, AGO=xxx style)
   const hv=doc.summary?.headerValues||[];
   if(hv.length>0){
-    html+=`<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">`;
-    hv.forEach(h=>html+=`<div style="background:var(--gold-pale);border:1px solid #e0c870;border-radius:8px;padding:.35rem .7rem;">
-      <span style="font-size:.68rem;font-weight:600;color:var(--slate);text-transform:uppercase;">${esc(h.label)}</span>
-      <div style="font-size:.95rem;font-weight:700;color:var(--rust);">${esc(h.value)}</div></div>`);
-    html+='</div>';
-  }
-  if(doc.hasTable&&doc.tableHeaders&&doc.tableRows){
-    html+=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:.82rem;">
-      <thead><tr>`;
-    doc.tableHeaders.forEach(h=>html+=`<th style="background:#ede5d4;color:#8b4513;padding:.5rem .7rem;text-align:left;border-bottom:2px solid #d8ccb4;font-size:.75rem;">${esc(h)}</th>`);
-    html+='</tr></thead><tbody>';
-    doc.tableRows.forEach((row,i)=>{
-      const isTotal=row.rowType==='total'||row.rowType==='section';
-      html+=`<tr style="background:${isTotal?'#ede5d4':i%2===0?'white':'#fdf9f3'}">`;
-      (row.values||[]).forEach(cell=>{
-        const isNum=/^[\d,.\-+()%$£€¥₹\s]+$/.test(cell)&&cell.trim()!=='';
-        html+=`<td style="padding:.42rem .7rem;border-bottom:1px solid #f0e8d8;${isNum?'text-align:right;font-variant-numeric:tabular-nums;':''}${isTotal?'font-weight:700;':''}">${esc(cell)}</td>`;
-      });
-      html+='</tr>';
+    html+=`<div class="ledger-header-vals">`;
+    hv.forEach(h=>{
+      html+=`<div class="ledger-hval"><span class="ledger-hval-label">${esc(h.label)}</span><span class="ledger-hval-eq"> = </span><span class="ledger-hval-num">${esc(h.value)}</span></div>`;
     });
-    html+='</tbody></table></div>';
+    html+=`</div>`;
   }
-  if(doc.summary?.notes)html+=`<div style="margin-top:.8rem;background:#f5f5f0;border-left:3px solid var(--gold);padding:.7rem 1rem;font-size:.8rem;color:var(--slate);border-radius:0 8px 8px 0;">${esc(doc.summary.notes)}</div>`;
-  if(doc.extractionNotes)html+=`<div style="margin-top:.8rem;font-size:.72rem;color:#a09080;font-style:italic;">📋 ${esc(doc.extractionNotes)}</div>`;
+  html+=`</div>`;
+
+  if(isLedger){
+    const headers=doc.tableHeaders||[];
+    // ── Ruled ledger table ──
+    html+=`<div class="ledger-table-wrap"><table class="ledger-tbl">`;
+
+    // Header row
+    html+=`<thead><tr class="ledger-thead-row">`;
+    headers.forEach(h=>html+=`<th class="ledger-th">${esc(h)}</th>`);
+    html+=`</tr></thead><tbody>`;
+
+    // Data rows — group Closing/Opening pairs visually
+    let prevType='';
+    doc.tableRows.forEach((row,i)=>{
+      const vals=row.values||[];
+      const rt=row.rowType||'data';
+      const isTotal=rt==='total';
+      const isSection=rt==='section';
+
+      // Detect closing/opening from first cell
+      const firstVal=(vals[0]||'').toLowerCase().trim();
+      const isClosing=firstVal.includes('closing')||firstVal.includes('close');
+      const isOpening=firstVal.includes('opening')||firstVal.includes('open');
+
+      // Add a thin divider before each new Closing row (new entry group)
+      if(isClosing&&i>0)html+=`<tr class="ledger-divider-row"><td colspan="${headers.length}" class="ledger-divider"></td></tr>`;
+
+      let rowClass='ledger-row';
+      if(isTotal)rowClass+=' ledger-total';
+      else if(isSection)rowClass+=' ledger-section';
+      else if(isClosing)rowClass+=' ledger-closing';
+      else if(isOpening)rowClass+=' ledger-opening';
+
+      html+=`<tr class="${rowClass}">`;
+      vals.forEach((cell,ci)=>{
+        const isNum=/^[\d,.\-+()%$£€¥₹\s]+$/.test(cell)&&cell.trim()!=='';
+        html+=`<td class="ledger-td${isNum?' ledger-num':''}${isTotal||isSection?' ledger-bold':''}">${esc(cell)}</td>`;
+      });
+      html+=`</tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  } else {
+    // Plain text in ruled lines
+    html+=`<div class="ledger-lines">`;
+    (doc.rawText||'').split('\n').forEach(line=>{
+      html+=`<div class="ledger-line">${esc(line)||'&nbsp;'}</div>`;
+    });
+    html+=`</div>`;
+  }
+
+  if(doc.summary?.notes)html+=`<div class="ledger-notes">${esc(doc.summary.notes)}</div>`;
+  if(doc.extractionNotes)html+=`<div class="ledger-extract-note">📋 ${esc(doc.extractionNotes)}</div>`;
+
+  html+=`</div>`;
   document.getElementById('fmtPrev').innerHTML=html;
   ['bFPdf','bFHtml','bFDoc','bFMd'].forEach(id=>document.getElementById(id).disabled=false);
 }
