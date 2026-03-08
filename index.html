@@ -258,48 +258,158 @@ header{padding:1rem 2rem;border-bottom:1px solid var(--border);display:flex;alig
   padding:0;font-family:Georgia,serif;font-size:.88rem;line-height:1.85;
   color:var(--ink);overflow-y:auto;max-height:520px;}
 
-/* ── LEDGER PAPER FORMATTED VIEW ── */
-.ledger-paper{
-  background:#fdfaf3;
-  border-radius:8px;
-  padding:1.2rem 1rem;
-  font-family:'Courier New',Courier,monospace;
-  font-size:.83rem;
-  line-height:2;
-  background-image:repeating-linear-gradient(
-    to bottom,transparent,transparent calc(2em - 1px),#d8ceb0 calc(2em - 1px),#d8ceb0 2em
-  );
-  background-size:100% 2em;
-  min-height:200px;
-  position:relative;
-  overflow-x:hidden;
+/* ══════════════════════════════════════════
+   LEDGER / NOTEBOOK PAPER — realistic ruling
+   ══════════════════════════════════════════ */
+#fmtPrev{
+  min-height:260px;background:white;border:1px solid var(--border);
+  border-radius:11px;padding:0;overflow-y:auto;max-height:560px;
 }
-.ledger-paper::before{content:'';position:absolute;left:2.8rem;top:0;bottom:0;border-left:1.5px solid rgba(200,70,70,0.2);pointer-events:none;}
-.ledger-header-block{background:rgba(253,250,243,0.97);text-align:center;margin-bottom:.2rem;padding-bottom:.3rem;border-bottom:2px solid #b8832a;position:relative;z-index:1;}
-.ledger-date{font-size:.75rem;color:#8b6914;font-weight:600;letter-spacing:.05em;}
-.ledger-doc-type{font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:700;color:#8b4513;margin-bottom:.2rem;}
-.ledger-header-vals{display:flex;flex-wrap:wrap;justify-content:center;gap:1.5rem;font-size:.85rem;margin:.2rem 0;}
-.ledger-hval{display:flex;align-items:baseline;gap:.15rem;}
-.ledger-hval-label{font-weight:700;color:#8b4513;}
-.ledger-hval-eq{color:#8b6914;}
+.ledger-paper{
+  /* Aged paper colour */
+  background-color:#fdf8f0;
+  /* Horizontal ruled lines — 2em row height */
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent calc(2em - 1px),
+      #b8c8d8 calc(2em - 1px),   /* blue ruled line */
+      #b8c8d8 2em
+    );
+  background-size:100% 2em;
+  font-family:'Courier New',Courier,monospace;
+  font-size:.84rem;
+  line-height:2em;
+  position:relative;
+  padding:0 0 1rem 0;
+  min-height:300px;
+  overflow-x:auto;
+}
+
+/* Red margin line — fixed position */
+.ledger-margin-line{
+  position:absolute;
+  top:0; bottom:0;
+  left:5.5rem;
+  width:1.5px;
+  background:rgba(220,50,50,0.45);
+  z-index:5;
+  pointer-events:none;
+}
+
+/* Header area above the table */
+.ledger-header-block{
+  position:relative;
+  z-index:2;
+  text-align:center;
+  padding:.4rem .5rem .3rem;
+  border-bottom:2px solid rgba(180,80,80,0.4);
+  background:rgba(253,248,240,0.97);
+  line-height:2em;
+}
+.ledger-date{font-size:.78rem;color:#7a5010;font-weight:600;letter-spacing:.04em;}
+.ledger-doc-type{
+  font-family:'Cormorant Garamond',serif;
+  font-size:1.05rem;font-weight:700;color:#8b4513;
+}
+.ledger-header-vals{
+  display:flex;flex-wrap:wrap;justify-content:center;
+  gap:2rem;font-size:.88rem;padding:.1rem 0;
+}
+.ledger-hval-label{font-weight:700;color:#8b3010;}
+.ledger-hval-eq{color:#777;}
 .ledger-hval-num{font-weight:600;color:#1a1208;font-variant-numeric:tabular-nums;}
-.ledger-table-wrap{overflow-x:auto;position:relative;z-index:1;}
-.ledger-tbl{width:100%;border-collapse:collapse;font-size:.82rem;}
-.ledger-th{padding:.05rem .6rem;text-align:left;font-size:.68rem;font-weight:700;color:#8b4513;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #b8832a;background:rgba(237,229,212,0.7);white-space:nowrap;height:2em;line-height:2em;}
-.ledger-td{padding:0 .6rem;height:2em;line-height:2em;border:none;color:#1a1208;white-space:nowrap;vertical-align:middle;}
+
+/* The actual table */
+.ledger-table-wrap{overflow-x:auto;position:relative;z-index:2;}
+.ledger-tbl{
+  width:100%;
+  border-collapse:collapse;
+  font-size:.83rem;
+  table-layout:fixed;
+}
+
+/* Column header row */
+.ledger-thead-row .ledger-th{
+  height:2em;
+  line-height:2em;
+  padding:0 .5rem;
+  font-size:.68rem;
+  font-weight:700;
+  color:#8b4513;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  border-right:1.5px solid rgba(80,80,160,0.35);   /* vertical pen line */
+  border-bottom:2px solid rgba(180,60,60,0.5);       /* red separator */
+  background:rgba(237,229,212,0.6);
+  white-space:nowrap;
+  text-align:left;
+}
+.ledger-thead-row .ledger-th:last-child{border-right:none;}
+
+/* Data cells */
+.ledger-td{
+  height:2em;
+  line-height:2em;
+  padding:0 .5rem;
+  border-right:1.5px solid rgba(80,80,160,0.28);    /* vertical pen line — blue-ish */
+  border-bottom:none;                                 /* horizontal from background */
+  color:#1a1208;
+  white-space:nowrap;
+  vertical-align:middle;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  background:transparent;
+}
+.ledger-td:last-child{border-right:none;}
 .ledger-num{text-align:right;font-variant-numeric:tabular-nums;}
 .ledger-bold{font-weight:700;}
-.ledger-row:hover td{background:rgba(184,131,42,0.07);}
-.ledger-closing td{color:#7a2a10;font-weight:700;}
-.ledger-opening td{color:#1e3d70;}
-.ledger-total td{font-weight:700;border-top:1.5px solid #b8832a;}
-.ledger-section td{font-weight:600;background:rgba(237,229,212,0.35);}
-.ledger-divider-row .ledger-divider{height:0;padding:0;border-top:1px dashed #c8b880;}
-.ledger-lines .ledger-line{height:2em;line-height:2em;padding:0 .4rem;color:#1a1208;white-space:pre;overflow-x:visible;position:relative;z-index:1;}
-.ledger-notes{margin-top:.5rem;font-size:.72rem;color:#8b6914;border-left:3px solid var(--gold);padding:.35rem .7rem;background:rgba(253,250,243,.95);position:relative;z-index:1;}
-.ledger-extract-note{margin-top:.3rem;font-size:.66rem;color:#a09080;font-style:italic;padding:.2rem .6rem;position:relative;z-index:1;}
 
+/* Row types */
+.ledger-row:hover .ledger-td{background:rgba(184,131,42,0.07);}
+.ledger-closing .ledger-td{color:#7a1a08;font-weight:700;}
+.ledger-opening .ledger-td{color:#1a3d80;}
+.ledger-total .ledger-td{
+  font-weight:700;
+  border-top:1.5px solid rgba(180,60,60,0.55);
+  color:#0f0c07;
+}
+.ledger-section .ledger-td{
+  font-weight:600;
+  background:rgba(237,229,212,0.3);
+}
 
+/* Divider between entry groups */
+.ledger-divider-row .ledger-divider{
+  height:0;padding:0;
+  border-top:1.5px solid rgba(180,60,60,0.35);
+  background:transparent;
+}
+
+/* Plain text lines mode */
+.ledger-lines .ledger-line{
+  height:2em;line-height:2em;
+  padding:0 .5rem 0 6rem;
+  color:#1a1208;
+  white-space:pre;
+  position:relative;z-index:2;
+}
+
+/* Notes at bottom */
+.ledger-notes{
+  position:relative;z-index:2;
+  margin:.4rem .5rem 0;
+  font-size:.72rem;color:#8b6914;
+  border-left:3px solid var(--gold);
+  padding:.3rem .7rem;
+  background:rgba(253,248,240,.95);
+}
+.ledger-extract-note{
+  position:relative;z-index:2;
+  font-size:.65rem;color:#a09080;
+  font-style:italic;padding:.15rem .6rem;
+}
 
 /* ── EXPORT / TOOLS ── */
 .sec-label{font-size:.69rem;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:.07em;}
@@ -1242,7 +1352,7 @@ function renderFormatted(doc){
   const isLedger=doc.hasTable&&doc.tableRows&&doc.tableRows.length>0;
 
   // ── Ledger paper style ──
-  let html=`<div class="ledger-paper">`;
+  let html=`<div class="ledger-paper"><div class="ledger-margin-line"></div>`;
 
   // Header section
   html+=`<div class="ledger-header-block">`;
