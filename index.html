@@ -647,7 +647,7 @@
 <script>
   let imageBase64 = null;
   let imageMime = null;
-  let tableData = null; // { headers: [...], rows: [...], meta: {...} }
+  let tableData = null;
   let rawText = '';
   let currentView = 'table';
 
@@ -710,6 +710,85 @@
     }
   }
 
+  // ============================================================
+  // TEXT-BASED FALLBACK PARSER
+  // If JSON extraction fails, parse Closing/Opening patterns from raw text
+  // ============================================================
+  function parseTextToGroups(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const groups = [];
+    const headerNotes = [];
+    let i = 0;
+
+    // Grab header notes (lines before first "Closing")
+    while (i < lines.length && !/^closing/i.test(lines[i])) {
+      headerNotes.push(lines[i]);
+      i++;
+    }
+
+    // Parse groups: each group = Closing line, Opening line, Data line
+    while (i < lines.length) {
+      const closingLine = lines[i] || '';
+      if (!/^closing/i.test(closingLine)) { i++; continue; }
+
+      const openingLine = (i + 1 < lines.length) ? lines[i + 1] : '';
+      const dataLine = (i + 2 < lines.length) ? lines[i + 2] : '';
+
+      // Parse closing: "Closing  pms 92531.999" or "Closing  Ago 38748.496-"
+      const closingMatch = closingLine.match(/^closing\s+(\S+)\s*([\d.,\-]+)/i);
+      let cat = '', closingVal = '';
+      if (closingMatch) {
+        cat = closingMatch[1];
+        closingVal = closingMatch[2];
+      } else {
+        // Try: "Closing pms92531.999" (no space)
+        const alt = closingLine.match(/^closing\s+(\D+?)([\d.,\-]+)/i);
+        if (alt) { cat = alt[1].trim(); closingVal = alt[2]; }
+      }
+
+      // Parse opening: "Opening  92409.027-" or "Opening 33632.575-"
+      let openingVal = '';
+      const openingMatch = openingLine.match(/^opening\s+([\d.,\-]+)/i);
+      if (openingMatch) openingVal = openingMatch[1];
+
+      // Parse data line: "122.972 5195 637609.42-" or "122.972  5195  68760.942-"
+      let diff = '', units = '', amount = '';
+      if (!/^closing/i.test(dataLine) && !/^opening/i.test(dataLine)) {
+        const nums = dataLine.match(/[\d.,]+[\-]?/g);
+        if (nums && nums.length >= 3) {
+          diff = nums[0];
+          units = nums[1];
+          amount = nums[2];
+        } else if (nums && nums.length === 2) {
+          diff = nums[0];
+          amount = nums[1];
+        }
+      }
+
+      groups.push({
+        closing_category: cat,
+        closing_value: closingVal,
+        opening_value: openingVal,
+        difference: diff,
+        units: units,
+        amount: amount
+      });
+
+      i += 3;
+      // Skip blank/separator lines
+      while (i < lines.length && lines[i].trim() === '') i++;
+    }
+
+    if (groups.length > 0) {
+      return {
+        type: 'ledger',
+        meta: { header_notes: headerNotes },
+        groups: groups
+      };
+    }
+    return null;
+  }
+
   async function convertHandwriting() {
     if (!imageBase64) return;
 
@@ -718,7 +797,6 @@
     showStatus('loading', 'Reading your handwriting…');
     document.getElementById('convertBtn').disabled = true;
 
-    // Determine if we should extract as table
     const isLedger = docType === 'ledger' || docType === 'auto';
 
     const systemPrompt = isLedger ?
@@ -738,15 +816,12 @@ RESPOND WITH ONLY valid JSON in this exact format (no markdown, no backticks, no
   "type": "ledger",
   "meta": {
     "title": "description of what this ledger contains",
-    "header_notes": ["any notes at top of page like pms = 380.51, Ago = 104.548"]
+    "header_notes": ["pms = 380.51", "Ago = 104.548"]
   },
-  "headers": ["Type", "Category", "Closing", "Opening", "Difference", "Units", "Amount"],
   "groups": [
     {
-      "closing_label": "Closing",
       "closing_category": "pms",
       "closing_value": "92531.999",
-      "opening_label": "Opening",
       "opening_value": "92409.027-",
       "difference": "122.972",
       "units": "5195",
@@ -755,7 +830,7 @@ RESPOND WITH ONLY valid JSON in this exact format (no markdown, no backticks, no
   ]
 }
 
-Adapt the headers and fields to match what you actually see in the image. Each group typically has a Closing row, Opening row, and a calculated row with difference/units/amount. Extract ALL groups visible.` :
+Each group has: Closing row (with category like pms/Ago), Opening row, and a data row with difference/units/amount. Extract ALL groups.` :
 
 `You are an expert handwriting transcription specialist.
 
@@ -803,27 +878,36 @@ Just output the transcribed text, nothing else.`;
       }
 
       const text = data.content?.find(b => b.type === 'text')?.text || '';
+      rawText = text;
 
       if (isLedger) {
+        // Try JSON parse first
+        let parsed = null;
         try {
-          // Clean potential markdown backticks
           const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-          tableData = JSON.parse(cleaned);
+          parsed = JSON.parse(cleaned);
+        } catch (e) {
+          console.warn('JSON parse failed, trying text fallback parser...');
+        }
+
+        // Fallback: parse from raw text patterns
+        if (!parsed || !parsed.groups || parsed.groups.length === 0) {
+          parsed = parseTextToGroups(text);
+        }
+
+        if (parsed && parsed.groups && parsed.groups.length > 0) {
+          tableData = parsed;
           rawText = buildRawTextFromTable(tableData);
           renderLedgerTable(tableData);
           document.getElementById('outputText').value = rawText;
           switchView('table');
-        } catch (parseErr) {
-          // Fallback: treat as plain text
-          console.warn('JSON parse failed, falling back to raw text:', parseErr);
-          rawText = text;
+        } else {
           tableData = null;
           document.getElementById('outputText').value = text;
-          document.getElementById('tableView').innerHTML = '<div class="ledger-empty">Could not parse table structure. Showing raw text instead.</div>';
+          document.getElementById('tableView').innerHTML = '<div class="ledger-empty">Could not detect table structure. Switch to Raw Text.</div>';
           switchView('raw');
         }
       } else {
-        rawText = text;
         tableData = null;
         document.getElementById('outputText').value = text;
         document.getElementById('tableView').innerHTML = '<div class="ledger-empty">Plain text mode — switch to Raw Text tab.</div>';
@@ -835,6 +919,7 @@ Just output the transcribed text, nothing else.`;
       showStatus('success', '✅ Conversion complete!');
 
     } catch (err) {
+      console.error(err);
       showStatus('error', '⚠️ Network error — check your connection and try again.');
     }
 
@@ -844,29 +929,22 @@ Just output the transcribed text, nothing else.`;
   function buildRawTextFromTable(data) {
     if (!data || !data.groups) return '';
     let lines = [];
-
     if (data.meta?.header_notes) {
       data.meta.header_notes.forEach(n => lines.push(n));
       lines.push('');
     }
-
-    data.groups.forEach((g, i) => {
-      const cat = g.closing_category || g.category || '';
-      lines.push(`Closing  ${cat} ${g.closing_value || ''}`);
-      lines.push(`Opening    ${g.opening_value || ''}`);
-      const diff = g.difference || '';
-      const units = g.units || '';
-      const amt = g.amount || '';
-      lines.push(`        ${diff}    ${units}    ${amt}`);
+    data.groups.forEach((g) => {
+      const cat = g.closing_category || '';
+      lines.push(`Closing  ${cat}  ${g.closing_value || ''}`);
+      lines.push(`Opening     ${g.opening_value || ''}`);
+      lines.push(`     ${g.difference || ''}    ${g.units || ''}    ${g.amount || ''}`);
       lines.push('');
     });
-
     return lines.join('\n');
   }
 
   function renderLedgerTable(data) {
     const wrapper = document.getElementById('tableView');
-
     if (!data || !data.groups || data.groups.length === 0) {
       wrapper.innerHTML = '<div class="ledger-empty">No table data extracted.</div>';
       return;
@@ -874,54 +952,34 @@ Just output the transcribed text, nothing else.`;
 
     let html = '<table class="ledger-table">';
 
-    // Header notes
     if (data.meta?.header_notes && data.meta.header_notes.length > 0) {
       html += '<thead><tr>';
-      html += `<th colspan="6" style="text-align:center; font-style:italic; font-size:0.82rem;">`;
+      html += '<th colspan="6" style="text-align:center; font-style:italic; font-size:0.82rem;">';
       html += data.meta.header_notes.join(' &nbsp;|&nbsp; ');
       html += '</th></tr>';
     }
 
-    // Column headers
     html += '<tr>';
-    html += '<th>Type</th>';
-    html += '<th>Category</th>';
-    html += '<th>Value</th>';
-    html += '<th>Difference</th>';
-    html += '<th>Units</th>';
-    html += '<th>Amount</th>';
-    html += '</tr></thead>';
-
-    html += '<tbody>';
+    html += '<th>Type</th><th>Category</th><th>Value</th><th>Difference</th><th>Units</th><th>Amount</th>';
+    html += '</tr></thead><tbody>';
 
     data.groups.forEach((g, idx) => {
-      const cat = g.closing_category || g.category || '';
+      const cat = g.closing_category || '';
 
-      // Closing row
       html += '<tr class="row-closing">';
-      html += `<td>Closing</td>`;
-      html += `<td>${cat}</td>`;
-      html += `<td class="num">${g.closing_value || ''}</td>`;
-      html += '<td></td><td></td><td></td>';
-      html += '</tr>';
+      html += `<td>Closing</td><td>${cat}</td><td class="num">${g.closing_value || ''}</td>`;
+      html += '<td></td><td></td><td></td></tr>';
 
-      // Opening row
       html += '<tr class="row-opening">';
-      html += `<td>Opening</td>`;
-      html += `<td></td>`;
-      html += `<td class="num">${g.opening_value || ''}</td>`;
-      html += '<td></td><td></td><td></td>';
-      html += '</tr>';
+      html += `<td>Opening</td><td></td><td class="num">${g.opening_value || ''}</td>`;
+      html += '<td></td><td></td><td></td></tr>';
 
-      // Data row (difference, units, amount)
       html += '<tr class="row-data">';
-      html += '<td></td><td></td><td></td>';
+      html += `<td></td><td></td><td></td>`;
       html += `<td class="num">${g.difference || ''}</td>`;
       html += `<td class="num">${g.units || ''}</td>`;
-      html += `<td class="num">${g.amount || ''}</td>`;
-      html += '</tr>';
+      html += `<td class="num">${g.amount || ''}</td></tr>`;
 
-      // Separator between groups
       if (idx < data.groups.length - 1) {
         html += '<tr class="row-separator"><td colspan="6"></td></tr>';
       }
@@ -941,7 +999,7 @@ Just output the transcribed text, nothing else.`;
     const bar = document.getElementById('statusBar');
     bar.className = 'status-bar ' + type;
     if (type === 'loading') {
-      bar.innerHTML = `<div class="spinner"></div> ${msg}`;
+      bar.innerHTML = '<div class="spinner"></div> ' + msg;
     } else {
       bar.textContent = msg;
     }
@@ -954,44 +1012,39 @@ Just output the transcribed text, nothing else.`;
     const val = document.getElementById('outputText').value;
     const len = val.length;
     const words = val.trim().split(/\s+/).filter(Boolean).length;
-    document.getElementById('charCount').textContent = len > 0 ? `${words} words · ${len} chars` : '';
+    document.getElementById('charCount').textContent = len > 0 ? (words + ' words · ' + len + ' chars') : '';
   }
 
   function copyText() {
     const text = document.getElementById('outputText').value;
-    navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+    navigator.clipboard.writeText(text).then(function() { showToast('Copied to clipboard!'); });
   }
 
   function downloadTxt() {
-    const text = document.getElementById('outputText').value;
-    const blob = new Blob([text], { type: 'text/plain' });
-    downloadBlob(blob, 'handscript-note.txt');
+    var text = document.getElementById('outputText').value;
+    downloadBlob(new Blob([text], { type: 'text/plain' }), 'handscript-note.txt');
     showToast('Downloaded as .txt!');
   }
 
   function downloadCsv() {
     if (!tableData || !tableData.groups) {
-      // Fallback: just download raw text as csv
-      const blob = new Blob([rawText], { type: 'text/csv' });
-      downloadBlob(blob, 'handscript-data.csv');
+      downloadBlob(new Blob([rawText], { type: 'text/csv' }), 'handscript-data.csv');
       showToast('Downloaded as .csv!');
       return;
     }
-
-    let csv = 'Type,Category,Value,Difference,Units,Amount\n';
-    tableData.groups.forEach(g => {
-      const cat = g.closing_category || g.category || '';
-      csv += `Closing,${cat},${g.closing_value || ''},,, \n`;
-      csv += `Opening,,${g.opening_value || ''},,, \n`;
-      csv += `,,,${g.difference || ''},${g.units || ''},${g.amount || ''}\n`;
+    var csv = 'Type,Category,Value,Difference,Units,Amount\n';
+    tableData.groups.forEach(function(g) {
+      var cat = g.closing_category || '';
+      csv += 'Closing,' + cat + ',' + (g.closing_value || '') + ',,,\n';
+      csv += 'Opening,,' + (g.opening_value || '') + ',,,\n';
+      csv += ',,,' + (g.difference || '') + ',' + (g.units || '') + ',' + (g.amount || '') + '\n';
     });
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    downloadBlob(blob, 'handscript-ledger.csv');
+    downloadBlob(new Blob([csv], { type: 'text/csv' }), 'handscript-ledger.csv');
     showToast('Downloaded as .csv!');
   }
 
   function downloadDoc() {
+    // Always try to build table RTF if we have groups
     if (tableData && tableData.groups && tableData.groups.length > 0) {
       downloadRtfTable();
     } else {
@@ -1000,172 +1053,147 @@ Just output the transcribed text, nothing else.`;
   }
 
   function downloadRtfPlain() {
-    const text = document.getElementById('outputText').value;
-    const escaped = text.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
-    const rtf = `{\\rtf1\\ansi\\deff0
-{\\fonttbl {\\f0 Times New Roman;}}
-\\f0\\fs24
-${escaped.replace(/\n/g, '\\par\n')}
-}`;
-    const blob = new Blob([rtf], { type: 'application/rtf' });
-    downloadBlob(blob, 'handscript-note.rtf');
+    var text = document.getElementById('outputText').value;
+    var escaped = escRtf(text);
+    var rtf = '{\\rtf1\\ansi\\deff0\n';
+    rtf += '{\\fonttbl{\\f0 Times New Roman;}}\n';
+    rtf += '\\f0\\fs24\n';
+    rtf += escaped.replace(/\n/g, '\\par\n');
+    rtf += '\n}';
+    downloadBlob(new Blob([rtf], { type: 'application/rtf' }), 'handscript-note.rtf');
     showToast('Downloaded — opens in Word!');
   }
 
+  // ============================================================
+  // RTF TABLE GENERATOR — WordPad-compatible
+  // Uses ONLY features WordPad supports:
+  //   \trowd, \cellxN, \intbl, \cell, \row
+  //   \clbrdrt/b/l/r with \brdrs (single border) and \brdrw (width)
+  // NO \clcbpat (cell backgrounds) — WordPad ignores these
+  // NO \trqc — WordPad ignores this
+  // NO \cf (color in cells) — keep it simple
+  // ============================================================
   function downloadRtfTable() {
-    // Build RTF with actual table borders that WordPad renders
-    // WordPad supports \trowd, \cellx, \intbl, \cell, \row
-    // Border definitions: \clbrdrt (top), \clbrdrb (bottom), \clbrdrl (left), \clbrdrr (right)
+    var groups = tableData.groups;
 
-    const groups = tableData.groups;
-    const colWidths = [1400, 1200, 2000, 1800, 1200, 2200]; // twips (1 inch = 1440 twips)
-    const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+    // Column positions in twips (cumulative right edges)
+    // 6 columns: Type(1200) | Category(1200) | Value(2200) | Difference(1800) | Units(1200) | Amount(2200)
+    var colPos = [1200, 2400, 4600, 6400, 7600, 9800];
 
-    let rtf = `{\\rtf1\\ansi\\deff0\n`;
-    rtf += `{\\fonttbl {\\f0 Times New Roman;}{\\f1 Arial;}}\n`;
-    rtf += `{\\colortbl ;\\red26\\green18\\blue8;\\red168\\green188\\blue208;\\red192\\green48\\blue48;\\red139\\green107\\blue20;\\red255\\green255\\blue255;\\red240\\green232\\blue218;\\red253\\green240\\blue240;\\red240\\green244\\blue253;\\red250\\green246\\blue239;}\n`;
-    // Colors: 1=ink, 2=blue-rule, 3=red-rule, 4=sepia, 5=white, 6=cream-header, 7=closing-bg, 8=opening-bg, 9=data-bg
+    var rtf = '{\\rtf1\\ansi\\deff0\n';
+    rtf += '{\\fonttbl{\\f0 Times New Roman;}{\\f1 Arial;}}\n';
+    // Color table: 0=auto, 1=blue(ruling), 2=red(margin/separator), 3=dark
+    rtf += '{\\colortbl;\\red120\\green140\\blue180;\\red180\\green40\\blue40;\\red30\\green20\\blue10;}\n';
+    rtf += '\n';
 
-    // Title
-    if (tableData.meta?.title) {
-      rtf += `\\f1\\fs20\\b ${escRtf(tableData.meta.title)}\\b0\\par\n`;
-    }
-    if (tableData.meta?.header_notes) {
-      tableData.meta.header_notes.forEach(n => {
-        rtf += `\\f0\\fs20\\i ${escRtf(n)}\\i0\\par\n`;
+    // Title / header notes
+    if (tableData.meta && tableData.meta.header_notes) {
+      tableData.meta.header_notes.forEach(function(n) {
+        rtf += '\\f0\\fs22\\i ' + escRtf(n) + '\\i0\\par\n';
       });
+      rtf += '\\par\n';
     }
-    rtf += `\\par\n`;
 
-    // Helper: build cell border definitions for a row
-    function cellDefs(opts = {}) {
-      const { bottomColor = 2, bottomWidth = 10, topColor = 0, leftFirst = true } = opts;
-      let defs = '';
-      let cumWidth = 0;
-      for (let c = 0; c < 6; c++) {
-        cumWidth += colWidths[c];
-        // Left border (red for first column)
-        if (c === 0 && leftFirst) {
-          defs += `\\clbrdrl\\brdrs\\brdrw30\\brdrcf3`;
+    // ---- Helper: generate one row definition with borders ----
+    // borderBottom: 'blue' | 'red' | 'none'
+    function rowDef(borderBottom) {
+      var def = '\\trowd\\trgaph80\n';
+      for (var c = 0; c < 6; c++) {
+        // Left border: thick red for first col, thin blue for others
+        if (c === 0) {
+          def += '\\clbrdrl\\brdrs\\brdrw30\\brdrcf2';
         } else {
-          defs += `\\clbrdrl\\brdrs\\brdrw10\\brdrcf2`;
+          def += '\\clbrdrl\\brdrs\\brdrw10\\brdrcf1';
         }
-        // Right border
-        if (c < 5) {
-          defs += `\\clbrdrr\\brdrs\\brdrw10\\brdrcf2`;
-        }
+        // Right border: thin blue (last col also gets it to close the table)
+        def += '\\clbrdrr\\brdrs\\brdrw10\\brdrcf1';
         // Bottom border
-        if (bottomColor > 0) {
-          defs += `\\clbrdrb\\brdrs\\brdrw${bottomWidth}\\brdrcf${bottomColor}`;
+        if (borderBottom === 'red') {
+          def += '\\clbrdrb\\brdrs\\brdrw20\\brdrcf2';
+        } else if (borderBottom === 'blue') {
+          def += '\\clbrdrb\\brdrs\\brdrw10\\brdrcf1';
         }
-        // Top border
-        if (topColor > 0) {
-          defs += `\\clbrdrt\\brdrs\\brdrw${topWidth || 10}\\brdrcf${topColor}`;
-        }
-        defs += `\\cellx${cumWidth}\n`;
+        // Top border (only for header)
+        // -- we'll add separately if needed
+        def += '\\cellx' + colPos[c] + '\n';
       }
-      return defs;
+      return def;
     }
 
-    // Header row
-    rtf += `\\trowd\\trqc\n`;
-    let cumW = 0;
-    for (let c = 0; c < 6; c++) {
-      cumW += colWidths[c];
-      if (c === 0) rtf += `\\clbrdrl\\brdrs\\brdrw30\\brdrcf3`;
-      else rtf += `\\clbrdrl\\brdrs\\brdrw10\\brdrcf2`;
-      if (c < 5) rtf += `\\clbrdrr\\brdrs\\brdrw10\\brdrcf2`;
-      rtf += `\\clbrdrb\\brdrs\\brdrw20\\brdrcf3`; // red bottom for header
-      rtf += `\\clcbpat6`; // cream background
-      rtf += `\\cellx${cumW}\n`;
+    // ---- HEADER ROW ----
+    // Header has red bottom border (thick) + top border
+    rtf += '\\trowd\\trgaph80\n';
+    for (var c = 0; c < 6; c++) {
+      if (c === 0) rtf += '\\clbrdrl\\brdrs\\brdrw30\\brdrcf2';
+      else rtf += '\\clbrdrl\\brdrs\\brdrw10\\brdrcf1';
+      rtf += '\\clbrdrr\\brdrs\\brdrw10\\brdrcf1';
+      rtf += '\\clbrdrt\\brdrs\\brdrw20\\brdrcf2'; // red top
+      rtf += '\\clbrdrb\\brdrs\\brdrw20\\brdrcf2'; // red bottom
+      rtf += '\\cellx' + colPos[c] + '\n';
     }
-    const headers = ['Type', 'Category', 'Value', 'Difference', 'Units', 'Amount'];
-    headers.forEach(h => {
-      rtf += `\\intbl\\f1\\fs18\\b ${h}\\cell\n`;
-    });
-    rtf += `\\row\n`;
+    var headers = ['Type', 'Category', 'Value', 'Difference', 'Units', 'Amount'];
+    for (var h = 0; h < headers.length; h++) {
+      rtf += '\\intbl\\f1\\fs20\\b ' + headers[h] + '\\b0\\cell\n';
+    }
+    rtf += '\\row\n';
 
-    // Data rows
-    groups.forEach((g, gIdx) => {
-      const cat = g.closing_category || g.category || '';
-      const isLast = gIdx === groups.length - 1;
+    // ---- DATA ROWS ----
+    for (var gi = 0; gi < groups.length; gi++) {
+      var g = groups[gi];
+      var cat = g.closing_category || '';
+      var isLast = (gi === groups.length - 1);
 
-      // --- Closing row (red tint) ---
-      rtf += `\\trowd\\trqc\n`;
-      cumW = 0;
-      for (let c = 0; c < 6; c++) {
-        cumW += colWidths[c];
-        if (c === 0) rtf += `\\clbrdrl\\brdrs\\brdrw30\\brdrcf3`;
-        else rtf += `\\clbrdrl\\brdrs\\brdrw10\\brdrcf2`;
-        if (c < 5) rtf += `\\clbrdrr\\brdrs\\brdrw10\\brdrcf2`;
-        rtf += `\\clbrdrb\\brdrs\\brdrw10\\brdrcf2`;
-        rtf += `\\clcbpat7`; // closing row bg
-        rtf += `\\cellx${cumW}\n`;
-      }
-      rtf += `\\intbl\\f0\\fs20\\b\\cf3 Closing\\b0\\cf1\\cell\n`;
-      rtf += `\\intbl\\f0\\fs20\\b ${escRtf(cat)}\\b0\\cell\n`;
-      rtf += `\\intbl\\f0\\fs20 ${escRtf(g.closing_value || '')}\\cell\n`;
-      rtf += `\\intbl\\cell\n\\intbl\\cell\n\\intbl\\cell\n`;
-      rtf += `\\row\n`;
+      // Closing row — blue bottom border
+      rtf += rowDef('blue');
+      rtf += '\\intbl\\f0\\fs22\\b Closing\\b0\\cell\n';
+      rtf += '\\intbl\\f0\\fs22\\b ' + escRtf(cat) + '\\b0\\cell\n';
+      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.closing_value || '') + '\\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\row\n';
 
-      // --- Opening row (blue tint) ---
-      rtf += `\\trowd\\trqc\n`;
-      cumW = 0;
-      for (let c = 0; c < 6; c++) {
-        cumW += colWidths[c];
-        if (c === 0) rtf += `\\clbrdrl\\brdrs\\brdrw30\\brdrcf3`;
-        else rtf += `\\clbrdrl\\brdrs\\brdrw10\\brdrcf2`;
-        if (c < 5) rtf += `\\clbrdrr\\brdrs\\brdrw10\\brdrcf2`;
-        rtf += `\\clbrdrb\\brdrs\\brdrw10\\brdrcf2`;
-        rtf += `\\clcbpat8`; // opening row bg
-        rtf += `\\cellx${cumW}\n`;
-      }
-      rtf += `\\intbl\\f0\\fs20\\cf4 Opening\\cf1\\cell\n`;
-      rtf += `\\intbl\\cell\n`;
-      rtf += `\\intbl\\f0\\fs20 ${escRtf(g.opening_value || '')}\\cell\n`;
-      rtf += `\\intbl\\cell\n\\intbl\\cell\n\\intbl\\cell\n`;
-      rtf += `\\row\n`;
+      // Opening row — blue bottom border
+      rtf += rowDef('blue');
+      rtf += '\\intbl\\f0\\fs22 Opening\\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.opening_value || '') + '\\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\row\n';
 
-      // --- Data row (cream bg) with red separator bottom if not last ---
-      rtf += `\\trowd\\trqc\n`;
-      cumW = 0;
-      for (let c = 0; c < 6; c++) {
-        cumW += colWidths[c];
-        if (c === 0) rtf += `\\clbrdrl\\brdrs\\brdrw30\\brdrcf3`;
-        else rtf += `\\clbrdrl\\brdrs\\brdrw10\\brdrcf2`;
-        if (c < 5) rtf += `\\clbrdrr\\brdrs\\brdrw10\\brdrcf2`;
-        // Red separator bottom between groups
-        if (!isLast) {
-          rtf += `\\clbrdrb\\brdrs\\brdrw20\\brdrcf3`;
-        } else {
-          rtf += `\\clbrdrb\\brdrs\\brdrw10\\brdrcf2`;
-        }
-        rtf += `\\clcbpat9`; // data row bg
-        rtf += `\\cellx${cumW}\n`;
-      }
-      rtf += `\\intbl\\cell\n\\intbl\\cell\n\\intbl\\cell\n`;
-      rtf += `\\intbl\\f0\\fs20 ${escRtf(g.difference || '')}\\cell\n`;
-      rtf += `\\intbl\\f0\\fs20 ${escRtf(g.units || '')}\\cell\n`;
-      rtf += `\\intbl\\f0\\fs20 ${escRtf(g.amount || '')}\\cell\n`;
-      rtf += `\\row\n`;
-    });
+      // Data row (diff / units / amount) — red bottom if not last group, else blue
+      rtf += rowDef(isLast ? 'blue' : 'red');
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl \\cell\n';
+      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.difference || '') + '\\cell\n';
+      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.units || '') + '\\cell\n';
+      rtf += '\\intbl\\f0\\fs22 ' + escRtf(g.amount || '') + '\\cell\n';
+      rtf += '\\row\n';
+    }
 
-    rtf += `}\n`;
+    // Bottom border (final thick red line)
+    rtf += '\\par\n';
+    rtf += '}';
 
-    const blob = new Blob([rtf], { type: 'application/rtf' });
-    downloadBlob(blob, 'handscript-ledger.rtf');
-    showToast('Downloaded with ruled table — opens in WordPad/Word!');
+    downloadBlob(new Blob([rtf], { type: 'application/rtf' }), 'handscript-ledger.rtf');
+    showToast('Downloaded with ruled lines — opens in WordPad!');
   }
 
   function escRtf(str) {
-    return (str || '').replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+    if (!str) return '';
+    return str.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
   }
 
   function downloadBlob(blob, filename) {
-    const a = document.createElement('a');
+    var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
   }
 
@@ -1176,16 +1204,16 @@ ${escaped.replace(/\n/g, '\\par\n')}
     rawText = '';
     updateCharCount();
     hideStatus();
-    ['copyBtn','downloadTxtBtn','downloadDocBtn','downloadCsvBtn','clearBtn'].forEach(id => {
+    ['copyBtn','downloadTxtBtn','downloadDocBtn','downloadCsvBtn','clearBtn'].forEach(function(id) {
       document.getElementById(id).disabled = true;
     });
   }
 
   function showToast(msg) {
-    const t = document.getElementById('toast');
+    var t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
+    setTimeout(function() { t.classList.remove('show'); }, 2500);
   }
 </script>
 </body>
