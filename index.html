@@ -1446,84 +1446,63 @@ function exportAs(fmt){
     const hv=parsedDoc.summary?.headerValues||[];
     const docType=parsedDoc.documentType||'Document';
     const docDate=parsedDoc.summary?.date||'';
-    const hvHtml=hv.map(h=>`<span class="hv"><b>${esc(h.label)}</b> = ${esc(h.value)}</span>`).join('');
+    const hvHtml=hv.map(h=>`<b style="color:#8b3010">${esc(h.label)}</b> = ${esc(h.value)}`).join('&nbsp;&nbsp;&nbsp;');
 
+    // Build table rows — each row gets a bottom border to simulate ruling
     let tblHtml='';
     if(hdr.length>0&&rows.length>0){
-      tblHtml+=`<table><thead><tr>${hdr.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>`;
+      const colW=Math.floor(100/hdr.length);
+      // Header row
+      tblHtml+=`<table border="0" cellspacing="0" cellpadding="4" width="100%" style="border-collapse:collapse;font-family:Courier New,monospace;font-size:10pt;">`;
+      tblHtml+=`<tr style="border-bottom:2px solid #c03030;background:#ede5d4;">`;
+      hdr.forEach(h=>tblHtml+=`<th width="${colW}%" style="padding:4px 6px;text-align:left;font-size:8pt;font-weight:bold;color:#8b4513;text-transform:uppercase;letter-spacing:1px;border-right:1px solid rgba(80,80,180,0.4);">${esc(h)}</th>`);
+      tblHtml+=`</tr>`;
+
       rows.forEach((row,i)=>{
         const vals=row.values||[];
         const isTotal=row.rowType==='total'||row.rowType==='section';
         const v0=(vals[0]||'').toLowerCase();
         const isClosing=v0.includes('closing');
         const isOpening=v0.includes('opening');
-        // Red divider line before each Closing group
-        if(isClosing&&i>0)tblHtml+=`<tr class="divider-row"><td colspan="${hdr.length}"></td></tr>`;
-        const cls=isTotal?'total':isClosing?'closing':isOpening?'opening':'';
-        tblHtml+=`<tr class="${cls}">${vals.map((v,ci)=>{
-          const isNum=/^[\d,.\-+()%]+$/.test((v||'').replace(/[\s,]/g,''))&&v.trim()!=='';
-          return `<td class="${isNum?'num':''}">${esc(v)}</td>`;
-        }).join('')}</tr>`;
+
+        // Red divider row before each new Closing group
+        if(isClosing&&i>0){
+          tblHtml+=`<tr style="border-top:2px solid #c03030;"><td colspan="${hdr.length}" style="height:2px;padding:0;border:none;"></td></tr>`;
+        }
+
+        const rowBg = isClosing?'#fff5f0': isOpening?'#f0f3ff': i%2===0?'#fdf8f0':'#faf3e8';
+        const textColor = isClosing?'#7a1a08': isOpening?'#1a3d80':'#1a1208';
+        const fontWeight = isTotal||isClosing?'bold':'normal';
+        const borderTop = isTotal?'2px solid #c03030':'none';
+
+        tblHtml+=`<tr style="border-bottom:1px solid #a8bcd0;background:${rowBg};border-top:${borderTop};">`;
+        vals.forEach((v,ci)=>{
+          const isNum=/^[\d,.\-+()%]+$/.test((v||'').replace(/[\s,]/g,''))&&(v||'').trim()!=='';
+          tblHtml+=`<td style="padding:3px 6px;color:${textColor};font-weight:${fontWeight};${isNum?'text-align:right;':''}border-right:1px solid rgba(80,80,180,0.3);font-family:Courier New,monospace;font-size:10pt;">${esc(v||'')}</td>`;
+        });
+        tblHtml+=`</tr>`;
       });
-      tblHtml+=`</tbody></table>`;
+      tblHtml+=`</table>`;
     } else {
-      tblHtml=`<div class="rawlines">${(text||'').split('\n').map(l=>`<div class="line">${esc(l)||'&nbsp;'}</div>`).join('')}</div>`;
+      // Plain text with ruled lines via table
+      tblHtml+=`<table border="0" cellspacing="0" cellpadding="0" width="100%" style="border-collapse:collapse;">`;
+      (text||'').split('\n').forEach(line=>{
+        tblHtml+=`<tr style="border-bottom:1px solid #a8bcd0;"><td style="padding:3px 6px;font-family:Courier New,monospace;font-size:10pt;">${esc(line)||'&nbsp;'}</td></tr>`;
+      });
+      tblHtml+=`</table>`;
     }
 
     const wordDoc=`<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<title>${esc(docType)}</title>
+<html><head><meta charset="UTF-8"><title>${esc(docType)}</title>
 <style>
-  @page { size: A4; margin: 2cm 2.5cm; }
-  body {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 11pt;
-    background: #fdf8f0;
-    color: #1a1208;
-    line-height: 1.9;
-    /* Ruled lines */
-    background-image: repeating-linear-gradient(
-      to bottom, transparent 0px, transparent calc(1.9em - 1px),
-      #a8bcd0 calc(1.9em - 1px), #a8bcd0 1.9em
-    );
-    background-size: 100% 1.9em;
-  }
-  .page { max-width: 18cm; margin: 0 auto; position: relative; padding-left: 3cm; }
-  /* Red margin line */
-  .page::before {
-    content: '';
-    position: fixed;
-    left: 4.8cm; top: 0; bottom: 0;
-    border-left: 1.5px solid rgba(210,50,50,0.4);
-  }
-  .doc-header { text-align:center; border-bottom: 2px solid rgba(180,60,60,0.4); padding-bottom:.3em; margin-bottom:.3em; background: rgba(253,248,240,.97); }
-  h1 { font-family: Georgia, serif; font-size: 14pt; font-weight: bold; color: #8b4513; margin:0; line-height:1.9em; }
-  .meta { font-size: 9pt; color: #7a5010; }
-  .hvrow { display:flex; flex-wrap:wrap; gap:1.5em; font-size:11pt; justify-content:center; margin:.2em 0; }
-  .hv b { color: #8b3010; }
-  table { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
-  thead tr th {
-    font-size: 8pt; font-weight: 700; color: #8b4513;
-    text-transform: uppercase; letter-spacing: .04em;
-    border-bottom: 2px solid rgba(180,60,60,0.5);
-    border-right: 1.5px solid rgba(80,80,180,0.3);
-    padding: 0 .5em; height: 1.9em; line-height: 1.9em;
-    background: rgba(237,229,212,0.6); text-align: left;
-  }
-  thead tr th:last-child { border-right: none; }
-  td {
-    padding: 0 .5em; height: 1.9em; line-height: 1.9em;
-    border-right: 1.5px solid rgba(80,80,180,0.28);
-    vertical-align: middle;
-  }
-  td:last-child { border-right: none; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.closing td { color: #7a1a08; font-weight: bold; }
-  tr.opening td { color: #1a3d80; }
-  tr.total td { font-weight: bold; border-top: 1.5px solid rgba(180,60,60,0.5); }
-  tr.divider-row td { height: 0; padding: 0; border-top: 1px solid rgba(180,60,60,0.3); border-right: none; }
-  .rawlines .line { height:1.9em; line-height:1.9em; padding:0 .5em; }
-  .foot { font-size:8pt; color:#a09080; text-align:center; border-top:1px solid #d8ccb4; margin-top:1em; padding-top:.3em; }
+  @page{size:A4;margin:2cm 2.5cm;}
+  body{font-family:'Courier New',Courier,monospace;font-size:10pt;background:#fdf8f0;color:#1a1208;margin:0;padding:0;}
+  .page{max-width:17cm;margin:0 auto;padding:0 0 1cm 2.5cm;border-left:2px solid rgba(200,50,50,0.35);}
+  .doc-header{text-align:center;padding:.4em 0 .3em;border-bottom:2px solid #c03030;margin-bottom:.5em;background:#fdf8f0;}
+  h1{font-family:Georgia,serif;font-size:14pt;font-weight:bold;color:#8b4513;margin:0;padding:0;}
+  .meta{font-size:9pt;color:#7a5010;margin:.1em 0;}
+  .hvrow{font-size:11pt;margin:.2em 0;}
+  .foot{font-size:8pt;color:#a09080;text-align:center;border-top:1px solid #d8ccb4;margin-top:1em;padding-top:.3em;}
 </style>
 </head><body><div class="page">
 <div class="doc-header">
