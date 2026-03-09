@@ -1449,40 +1449,51 @@ function exportAs(fmt){
 
     let tblHtml='';
     if(hdr.length>0&&rows.length>0){
-      // Use ONLY basic HTML attributes — no CSS — so WordPad renders them
-      tblHtml+=`<table border="1" cellspacing="0" cellpadding="5" width="100%" bordercolor="#a8bcd0">`;
-      // Header row
-      tblHtml+=`<tr bgcolor="#ddd0b0">`;
+      // Table with visible grid — horizontal lines (ruled) + vertical lines (pen columns)
+      // NO row background colors — plain white like real paper
+      tblHtml+=`<table border="1" cellspacing="0" cellpadding="4" width="100%" bordercolor="#8899bb">`;
+      // Header row — subtle shading only on header
+      tblHtml+=`<tr bgcolor="#e8e0d0">`;
       hdr.forEach(h=>tblHtml+=`<th align="left"><font face="Courier New" size="2" color="#8b4513"><b>${esc(h)}</b></font></th>`);
       tblHtml+=`</tr>`;
-      // Data rows
+      // Data rows — NO bgcolor, just borders
       rows.forEach((row,i)=>{
         const vals=row.values||[];
         const isTotal=row.rowType==='total'||row.rowType==='section';
         const v0=(vals[0]||'').toLowerCase();
         const isClosing=v0.includes('closing');
         const isOpening=v0.includes('opening');
-        const bg=isClosing?'#fff0ee':isOpening?'#eef0ff':i%2===0?'#fdf8f0':'#f5f0e8';
-        const color=isClosing?'#7a1a08':isOpening?'#1a3d80':'#1a1208';
-        // Divider before each Closing group
+        // Red separator line before each new Closing group
         if(isClosing&&i>0){
-          tblHtml+=`<tr bgcolor="#c03030"><td colspan="${hdr.length}" height="2"></td></tr>`;
+          tblHtml+=`<tr bgcolor="#cc3333"><td colspan="${hdr.length}" height="1" style="padding:0;"></td></tr>`;
         }
-        tblHtml+=`<tr bgcolor="${bg}">`;
+        const color=isClosing?'#7a1a08':isOpening?'#1a3d80':'#1a1208';
+        const bold=isTotal||isClosing;
+        tblHtml+=`<tr>`;// NO bgcolor — plain white paper
         vals.forEach(v=>{
           const isNum=/^[\d,.\-+()%]+$/.test((v||'').replace(/[\s,]/g,''))&&(v||'').trim()!=='';
-          const bold=isTotal||isClosing;
           tblHtml+=`<td align="${isNum?'right':'left'}"><font face="Courier New" size="2" color="${color}">${bold?'<b>':''}${esc(v||'')}${bold?'</b>':''}</font></td>`;
         });
         tblHtml+=`</tr>`;
       });
       tblHtml+=`</table>`;
     } else {
-      // Plain ruled text — each line in its own table row
-      tblHtml+=`<table border="0" cellspacing="0" cellpadding="4" width="100%" bgcolor="#fdf8f0">`;
-      (text||'').split('\n').forEach(line=>{
-        tblHtml+=`<tr><td style="border-bottom:1px solid #a8bcd0;"><font face="Courier New" size="2">${esc(line)||'&nbsp;'}</font></td></tr>`;
-      });
+      // Plain ruled lines — 2 columns with red vertical pen line + blue horizontal rules
+      // Mimics exercise book: white paper, blue ruled lines, red margin/divider
+      const lines=(text||'').split('\n');
+      const half=Math.ceil(lines.length/2);
+      const leftLines=lines.slice(0,half);
+      const rightLines=lines.slice(half);
+      const maxRows=Math.max(leftLines.length,rightLines.length);
+      tblHtml+=`<table border="0" cellspacing="0" cellpadding="4" width="100%">`;
+      for(let r=0;r<maxRows;r++){
+        const l=leftLines[r]||'';
+        const ri=rightLines[r]||'';
+        tblHtml+=`<tr>`;
+        tblHtml+=`<td width="48%" style="border-bottom:1px solid #7a9ac0;border-right:2px solid #cc4444;padding:3px 8px;"><font face="Courier New" size="2">${esc(l)||'&nbsp;'}</font></td>`;
+        tblHtml+=`<td width="52%" style="border-bottom:1px solid #7a9ac0;padding:3px 8px;"><font face="Courier New" size="2">${esc(ri)||'&nbsp;'}</font></td>`;
+        tblHtml+=`</tr>`;
+      }
       tblHtml+=`</table>`;
     }
 
@@ -1490,10 +1501,10 @@ function exportAs(fmt){
 
     const wordDoc=`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>${esc(docType)}</title></head>
-<body bgcolor="#fdf8f0" leftmargin="40" topmargin="20" marginwidth="40">
+<body bgcolor="#ffffff" leftmargin="50" topmargin="20" marginwidth="50">
 
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr><td align="center" bgcolor="#ddd0b0" style="border-bottom:3px solid #c03030;">
+<table width="100%" cellpadding="6" cellspacing="0" border="0" bgcolor="#ddd0b0">
+<tr><td align="center">
   <font face="Georgia,Times New Roman" size="4" color="#8b4513"><b>${esc(docType)}</b></font><br>
   ${docDate?`<font face="Courier New" size="2" color="#7a5010">${esc(docDate)}</font><br>`:''}
   ${hvText?`<font face="Courier New" size="2">${hvText}</font>`:''}
