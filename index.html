@@ -1441,89 +1441,35 @@ function exportAs(fmt){
     dl(csv,'handscript.csv','text/csv');showToast('Downloaded .CSV');return;
   }
   if(fmt==='doc'){
-    const hdr=parsedDoc.tableHeaders||[];
-    const rows=parsedDoc.tableRows||[];
-    const hv=parsedDoc.summary?.headerValues||[];
-    const docType=parsedDoc.documentType||'Document';
+    const rawLines=(parsedDoc.rawText||text||'').split('\n');
     const docDate=parsedDoc.summary?.date||'';
-
-    let tblHtml='';
-    if(hdr.length>0&&rows.length>0){
-      // Table with visible grid — horizontal lines (ruled) + vertical lines (pen columns)
-      // NO row background colors — plain white like real paper
-      tblHtml+=`<table border="1" cellspacing="0" cellpadding="4" width="100%" bordercolor="#8899bb">`;
-      // Header row — subtle shading only on header
-      tblHtml+=`<tr bgcolor="#e8e0d0">`;
-      hdr.forEach(h=>tblHtml+=`<th align="left"><font face="Courier New" size="2" color="#8b4513"><b>${esc(h)}</b></font></th>`);
-      tblHtml+=`</tr>`;
-      // Data rows — NO bgcolor, just borders
-      rows.forEach((row,i)=>{
-        const vals=row.values||[];
-        const isTotal=row.rowType==='total'||row.rowType==='section';
-        const v0=(vals[0]||'').toLowerCase();
-        const isClosing=v0.includes('closing');
-        const isOpening=v0.includes('opening');
-        // Red separator line before each new Closing group
-        if(isClosing&&i>0){
-          tblHtml+=`<tr bgcolor="#cc3333"><td colspan="${hdr.length}" height="1" style="padding:0;"></td></tr>`;
-        }
-        const color=isClosing?'#7a1a08':isOpening?'#1a3d80':'#1a1208';
-        const bold=isTotal||isClosing;
-        tblHtml+=`<tr>`;// NO bgcolor — plain white paper
-        vals.forEach(v=>{
-          const isNum=/^[\d,.\-+()%]+$/.test((v||'').replace(/[\s,]/g,''))&&(v||'').trim()!=='';
-          tblHtml+=`<td align="${isNum?'right':'left'}"><font face="Courier New" size="2" color="${color}">${bold?'<b>':''}${esc(v||'')}${bold?'</b>':''}</font></td>`;
-        });
-        tblHtml+=`</tr>`;
-      });
-      tblHtml+=`</table>`;
-    } else {
-      // Plain ruled lines — 2 columns with red vertical pen line + blue horizontal rules
-      // Mimics exercise book: white paper, blue ruled lines, red margin/divider
-      const lines=(text||'').split('\n');
-      const half=Math.ceil(lines.length/2);
-      const leftLines=lines.slice(0,half);
-      const rightLines=lines.slice(half);
-      const maxRows=Math.max(leftLines.length,rightLines.length);
-      tblHtml+=`<table border="0" cellspacing="0" cellpadding="4" width="100%">`;
-      for(let r=0;r<maxRows;r++){
-        const l=leftLines[r]||'';
-        const ri=rightLines[r]||'';
-        tblHtml+=`<tr>`;
-        tblHtml+=`<td width="48%" style="border-bottom:1px solid #7a9ac0;border-right:2px solid #cc4444;padding:3px 8px;"><font face="Courier New" size="2">${esc(l)||'&nbsp;'}</font></td>`;
-        tblHtml+=`<td width="52%" style="border-bottom:1px solid #7a9ac0;padding:3px 8px;"><font face="Courier New" size="2">${esc(ri)||'&nbsp;'}</font></td>`;
-        tblHtml+=`</tr>`;
-      }
-      tblHtml+=`</table>`;
+    let splitIdx=-1;
+    for(let i=Math.floor(rawLines.length*0.2);i<rawLines.length;i++){
+      const t=rawLines[i].trim();
+      if(/^[A-Z][a-z]+(\s+[A-Z][a-z]+)?\s*$/.test(t)&&t.length>1&&t.length<25){splitIdx=i;break;}
     }
-
-    const hvText=hv.map(h=>`<b><font color="#8b3010">${esc(h.label)}</font></b> = ${esc(h.value)}`).join('&nbsp;&nbsp;&nbsp;&nbsp;');
-
-    const wordDoc=`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${esc(docType)}</title></head>
-<body bgcolor="#ffffff" leftmargin="50" topmargin="20" marginwidth="50">
-
-<table width="100%" cellpadding="6" cellspacing="0" border="0" bgcolor="#ddd0b0">
-<tr><td align="center">
-  <font face="Georgia,Times New Roman" size="4" color="#8b4513"><b>${esc(docType)}</b></font><br>
-  ${docDate?`<font face="Courier New" size="2" color="#7a5010">${esc(docDate)}</font><br>`:''}
-  ${hvText?`<font face="Courier New" size="2">${hvText}</font>`:''}
-</td></tr>
-</table>
-
-<br>
-${tblHtml}
-<br>
-<table width="100%"><tr><td align="center">
-  <font face="Arial" size="1" color="#a09080">Oola HandScript PRO &nbsp;&bull;&nbsp; ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</font>
-</td></tr></table>
-
-</body></html>`;
-
+    const leftLines=splitIdx>0?rawLines.slice(0,splitIdx):rawLines.slice(0,Math.ceil(rawLines.length/2));
+    const rightLines=splitIdx>0?rawLines.slice(splitIdx):rawLines.slice(Math.ceil(rawLines.length/2));
+    const maxRows=Math.max(leftLines.length,rightLines.length);
+    let bodyHtml='<table border="0" cellspacing="0" cellpadding="3" width="100%">';
+    if(docDate)bodyHtml+='<tr><td colspan="3" align="center"><font face="Courier New" size="2">'+esc(docDate)+'</font></td></tr>';
+    for(let r=0;r<maxRows;r++){
+      const l=(leftLines[r]||'').trimEnd();
+      const ri=(rightLines[r]||'').trimEnd();
+      bodyHtml+='<tr>';
+      bodyHtml+='<td width="49%" valign="top"><font face="Courier New" size="2">'+esc(l)+'</font></td>';
+      bodyHtml+='<td width="3" bgcolor="#cc3333" valign="top">&nbsp;</td>';
+      bodyHtml+='<td width="49%" valign="top"><font face="Courier New" size="2">'+esc(ri)+'</font></td>';
+      bodyHtml+='</tr>';
+    }
+    bodyHtml+='</table>';
+    const wordDoc='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Oola HandScript PRO</title></head>'
+      +'<body bgcolor="#ffffff" leftmargin="60" rightmargin="60" topmargin="40" marginwidth="60">'
+      +bodyHtml+'</body></html>';
     dl(wordDoc,'oola-handscript.doc','application/msword');
-    showToast('📝 Downloaded — opens in Word!');return;
+    showToast('\u{1F4DD} Downloaded \u2014 opens in Word!');return;
   }
-  if(fmt==='html'){
+    if(fmt==='html'){
     const body=document.getElementById('fmtPrev').innerHTML;
     dl(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Oola HandScript PRO Export</title><style>body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;background:#faf6ef;color:#0f0c07;padding:0 1.5rem;line-height:1.85}table{width:100%;border-collapse:collapse}th{background:#ede5d4;color:#8b4513;padding:.5rem .8rem;text-align:left;border-bottom:2px solid #d8ccb4}td{padding:.4rem .8rem;border-bottom:1px solid #f0e8d8}.foot{margin-top:2rem;font-size:.72rem;color:#a09080;text-align:center;border-top:1px solid #d8ccb4;padding-top:.7rem}</style></head><body>${body}<div class="foot">Oola HandScript PRO · ${new Date().toLocaleDateString()}</div></body></html>`,'handscript.html','text/html');
     showToast('Downloaded .HTML');return;
