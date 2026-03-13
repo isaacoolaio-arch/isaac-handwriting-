@@ -1025,28 +1025,45 @@ For financial ledgers specifically:
 - The difference/calculation row below a pair (e.g. "122.972") → rowType: "data" with label "Difference" or blank
 - Price column (e.g. "5185", "4800") → include in its own column
 
-TWO-COLUMN PAGES — VERY IMPORTANT:
-Many pages in this ledger have TWO side-by-side columns divided by a vertical pen line.
-- Left column: one person's records
-- Right column: another person's records
-- They run PARALLEL — same row height, side by side
+PAGE LAYOUT DETECTION — DO THIS FIRST:
+Before transcribing, look at the page and decide:
 
-If you see a 2-column layout:
-- In rawText, output BOTH columns side by side on the same line using spaces/tabs to align them
-- Format: "LeftContent                    RightContent"
-- Each person's name should appear at the top of their column
-- Lines that only appear on one side should have the other side blank
-- Preserve the spatial layout so it looks like the original page
-
-Example rawText for a 2-column page:
+CASE A — TWO COLUMN PAGE:
+Signs: a vertical pen line divides the page into left and right halves, two different person names at the top of each half, content runs in parallel columns side by side.
+Action for rawText: Write both columns side by side on the SAME line, padded with spaces so left content occupies ~40 chars and right content follows.
+Example:
 "10/03/26
-Winnie                         Donald
-Drop = 200,000                 Drop = 200,000
-200,000                        200,000
-Cash = 225,000                 Cash = 260,000"
+Winnie                              Donald
+Drop = 200,000                      Drop = 200,000
+200,000                             200,000
+200,000                             200,000
+Cash = 225,000                      Cash = 260,000
+                                    EX
+EX                                  Meal - 3000
+Meal - 3000                         Momo pay - 3000
+Momo pay - 5000                     Total = 6000
+Total = 9000
+Total = 1,225,000                   Total = 600,000
+Meter = 1233976.945                 Meter = 606072.565
+= 23.055                            = 72.565
+Norbert                             Cyrus
+Drop = 200,000                      Drop —
+200,000                             Cash = 199,500"
+
+CASE B — ONE COLUMN PAGE:
+Signs: writing runs continuously top to bottom, no vertical dividing line, content belongs to one section or one person.
+Action for rawText: Write lines top to bottom normally, preserving indentation.
+Example:
+"28/02/26
+PMS = (16.0/6.9) * 41000
+= 1217.391
+Ago = (9.7/14.1)
+= 171.985"
+
+IMPORTANT: Never mix up the two cases. If you see a vertical line dividing the page — it is ALWAYS a two-column layout. Each person's data stays in their own column.
 
 Return EXACTLY this JSON (no markdown, no extra text):
-{"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim full text preserving 2-column layout if present","extractionNotes":""}` ;
+{"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim full text with layout preserved","extractionNotes":""}` ;
 
     const r1=await callClaude(sys1,'Analyse this document completely. Return JSON only.',apiKey);
     setProgress(38);
