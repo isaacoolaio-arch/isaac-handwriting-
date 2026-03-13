@@ -554,11 +554,13 @@ td[contenteditable="true"]:focus{background:#fffde8;outline:2px solid var(--gold
 
     <div class="upzone" id="upZone">
       <div style="font-size:2.8rem;">🖼️</div>
-      <h3>Drop your photo here</h3>
-      <p>JPG · PNG · WEBP · GIF · HEIC<br>Ledgers, receipts, notes, forms</p>
-      <button class="btn-choose" onclick="document.getElementById('fileInput').click()">Choose Photo</button>
-      <input type="file" id="fileInput" accept="image/*" onchange="handleFile(event)">
+      <h3>Drop photos here</h3>
+      <p>JPG · PNG · WEBP · GIF · HEIC<br>Select one or multiple pages</p>
+      <button class="btn-choose" onclick="document.getElementById('fileInput').click()">Choose Photos</button>
+      <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFiles(event)">
     </div>
+    <!-- Queue thumbnails -->
+    <div id="queueRow" style="display:none;flex-wrap:wrap;gap:6px;padding:4px 0;max-height:90px;overflow-y:auto;"></div>
 
     <div class="prevbox" id="prevBox">
       <img id="imgPrev" alt="Preview">
@@ -917,7 +919,8 @@ function saveApiKey(){
   if(v){localStorage.setItem('hs_api_key',v);
     document.getElementById('akStatus').className='ak-status set';
     document.getElementById('akStatus').textContent='✅ API key saved securely on this device';
-    updateNetStatus();showToast('🔑 API key saved!');
+    updateNetStatus();
+  renderHistory();showToast('🔑 API key saved!');
   }else{
     localStorage.removeItem('hs_api_key');
     document.getElementById('akStatus').className='ak-status unset';
@@ -926,38 +929,131 @@ function saveApiKey(){
   }
 }
 
-/* ═══════ FILE ═══════ */
-function handleFile(e){const f=e.target.files[0];if(f)loadFile(f);}
-function loadFile(file){
-  imgMime=file.type||'image/jpeg';
-  const r=new FileReader();
-  r.onload=e=>{
-    imgB64=e.target.result.split(',')[1];
-    document.getElementById('imgPrev').src=e.target.result;
-    document.getElementById('upZone').style.display='none';
-    document.getElementById('prevBox').style.display='flex';
-    document.getElementById('convBtn').disabled=false;
-    hideStatus();
-  };r.readAsDataURL(file);
+/* ═══════ FILE QUEUE ═══════ */
+let imgQueue=[];   // [{b64,mime,name,dataUrl}]
+let queueIdx=0;    // currently loaded index
+
+function handleFiles(e){addToQueue(Array.from(e.target.files));}
+
+function addToQueue(files){
+  files.filter(f=>f.type.startsWith('image/')).forEach(f=>{
+    const r=new FileReader();
+    r.onload=ev=>{
+      imgQueue.push({b64:ev.target.result.split(',')[1],mime:f.type||'image/jpeg',name:f.name,dataUrl:ev.target.result});
+      renderQueue();
+      if(imgQueue.length===1)loadFromQueue(0);
+    };r.readAsDataURL(f);
+  });
 }
+
+function renderQueue(){
+  const qr=document.getElementById('queueRow');
+  if(imgQueue.length===0){qr.style.display='none';return;}
+  qr.style.display='flex';
+  qr.innerHTML=imgQueue.map((img,i)=>`
+    <div onclick="loadFromQueue(${i})" style="cursor:pointer;border-radius:7px;overflow:hidden;border:2px solid ${i===queueIdx?'var(--amber)':' var(--border)'};width:52px;height:52px;flex-shrink:0;position:relative;background:#f4ede0;">
+      <img src="${img.dataUrl}" style="width:100%;height:100%;object-fit:cover;">
+      <button onclick="removeFromQueue(event,${i})" style="position:absolute;top:1px;right:1px;background:rgba(15,12,7,.7);color:white;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>
+    </div>`).join('')+
+    `<div onclick="document.getElementById('fileInput').click()" style="cursor:pointer;border-radius:7px;border:2px dashed var(--border);width:52px;height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--muted);background:var(--amber-pale);">+</div>`;
+}
+
+function loadFromQueue(i){
+  if(i<0||i>=imgQueue.length)return;
+  queueIdx=i;
+  const img=imgQueue[i];
+  imgB64=img.b64;imgMime=img.mime;
+  document.getElementById('imgPrev').src=img.dataUrl;
+  document.getElementById('upZone').style.display='none';
+  document.getElementById('prevBox').style.display='flex';
+  document.getElementById('convBtn').disabled=false;
+  renderQueue();hideStatus();
+}
+
+function removeFromQueue(e,i){
+  e.stopPropagation();
+  imgQueue.splice(i,1);
+  if(imgQueue.length===0){removeImg();}
+  else{if(queueIdx>=imgQueue.length)queueIdx=imgQueue.length-1;loadFromQueue(queueIdx);}
+  renderQueue();
+}
+
 function removeImg(){
-  imgB64=null;imgMime=null;
+  imgB64=null;imgMime=null;imgQueue=[];queueIdx=0;
   document.getElementById('imgPrev').src='';
   document.getElementById('upZone').style.display='flex';
   document.getElementById('prevBox').style.display='none';
+  document.getElementById('queueRow').style.display='none';
   document.getElementById('convBtn').disabled=true;
   document.getElementById('fileInput').value='';
   hideStatus();
 }
+
 const uz=document.getElementById('upZone');
 uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
 uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
 uz.addEventListener('drop',e=>{
   e.preventDefault();uz.classList.remove('drag-over');
-  const f=e.dataTransfer.files[0];
-  if(f&&f.type.startsWith('image/'))loadFile(f);
+  addToQueue(Array.from(e.dataTransfer.files));
 });
 uz.addEventListener('click',e=>{if(e.target.tagName!=='BUTTON')document.getElementById('fileInput').click();});
+
+/* ═══════ HISTORY ═══════ */
+const HIST_KEY='hs_history';
+const MAX_HIST=10;
+
+function saveHistory(doc,thumbDataUrl){
+  let hist=[];
+  try{hist=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');}catch(e){}
+  const entry={
+    id:Date.now(),
+    date:new Date().toLocaleString(),
+    docType:doc.documentType||'Document',
+    docDate:doc.summary?.date||'',
+    rows:(doc.tableRows||[]).length,
+    accuracy:doc.accuracy||'—',
+    thumb:thumbDataUrl,
+    rawText:doc.rawText||''
+  };
+  hist.unshift(entry);
+  if(hist.length>MAX_HIST)hist=hist.slice(0,MAX_HIST);
+  localStorage.setItem(HIST_KEY,JSON.stringify(hist));
+  renderHistory();
+}
+
+function renderHistory(){
+  let hist=[];
+  try{hist=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');}catch(e){}
+  const panel=document.getElementById('historyPanel');
+  const list=document.getElementById('historyList');
+  if(!hist.length){panel.style.display='none';return;}
+  panel.style.display='block';
+  list.innerHTML=hist.map(h=>`
+    <div style="background:white;border:1px solid var(--border);border-radius:11px;overflow:hidden;cursor:pointer;box-shadow:0 1px 6px rgba(26,18,8,.05);" onclick="restoreHistory(${h.id})">
+      <div style="height:70px;background:#f4ede0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+        ${h.thumb?`<img src="${h.thumb}" style="width:100%;height:100%;object-fit:cover;">`:`<span style="font-size:1.8rem;">📄</span>`}
+      </div>
+      <div style="padding:.5rem .6rem;">
+        <div style="font-size:.78rem;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.docType}</div>
+        <div style="font-size:.7rem;color:var(--muted);">${h.docDate||''}&nbsp;</div>
+        <div style="font-size:.68rem;color:var(--muted);">${h.rows} rows · ${h.date}</div>
+      </div>
+    </div>`).join('');
+}
+
+function restoreHistory(id){
+  let hist=[];
+  try{hist=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');}catch(e){}
+  const h=hist.find(x=>x.id===id);
+  if(!h)return;
+  document.getElementById('outText').value=h.rawText;
+  showToast('♻️ Restored: '+h.docType);
+}
+
+function clearHistory(){
+  localStorage.removeItem(HIST_KEY);
+  renderHistory();
+}
 
 /* ═══════ MODE ═══════ */
 function setMode(m){
@@ -1234,6 +1330,8 @@ function finishRender(doc,engine){
   renderSummary(doc,engine);
   renderTable(doc);
   renderRawText(doc.rawText||'');
+  // Save to history
+  saveHistory(doc, document.getElementById('imgPrev').src);
   renderFormatted(doc);
   enableBtns();
   setProgress(100);
