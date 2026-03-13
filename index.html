@@ -1441,30 +1441,12 @@ function exportAs(fmt){
     dl(csv,'handscript.csv','text/csv');showToast('Downloaded .CSV');return;
   }
   if(fmt==='doc'){
-    const rawLines=(parsedDoc.rawText||text||'').split('\n');
-    const docDate=parsedDoc.summary?.date||'';
-    let splitIdx=-1;
-    for(let i=Math.floor(rawLines.length*0.2);i<rawLines.length;i++){
-      const t=rawLines[i].trim();
-      if(/^[A-Z][a-z]+(\s+[A-Z][a-z]+)?\s*$/.test(t)&&t.length>1&&t.length<25){splitIdx=i;break;}
-    }
-    const leftLines=splitIdx>0?rawLines.slice(0,splitIdx):rawLines.slice(0,Math.ceil(rawLines.length/2));
-    const rightLines=splitIdx>0?rawLines.slice(splitIdx):rawLines.slice(Math.ceil(rawLines.length/2));
-    const maxRows=Math.max(leftLines.length,rightLines.length);
-    // Completely plain — no borders, no lines, no colours, no decoration
-    let rows='';
-    if(docDate) rows+='<tr><td colspan="2" align="center"><font face="Courier New" size="2">'+esc(docDate)+'</font></td></tr>';
-    for(let r=0;r<maxRows;r++){
-      const l=(leftLines[r]||'').trimEnd();
-      const ri=(rightLines[r]||'').trimEnd();
-      rows+='<tr>';
-      rows+='<td width="50%" valign="top"><font face="Courier New" size="2">'+esc(l)+'</font></td>';
-      rows+='<td width="50%" valign="top"><font face="Courier New" size="2">'+esc(ri)+'</font></td>';
-      rows+='</tr>';
-    }
-    const wordDoc='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Oola HandScript PRO</title></head>'
-      +'<body bgcolor="#ffffff" leftmargin="60" rightmargin="60" topmargin="40">'
-      +'<table border="0" cellspacing="0" cellpadding="3" width="100%">'+rows+'</table>'
+    // Use the exact same raw text as .txt export — already perfectly formatted
+    const rawText=parsedDoc.rawText||text||'';
+    const wordDoc='<!DOCTYPE html><html><head><meta charset="UTF-8">'
+      +'<title>Oola HandScript PRO</title></head>'
+      +'<body bgcolor="#ffffff" leftmargin="40" rightmargin="40" topmargin="40">'
+      +'<pre><font face="Courier New" size="2">'+esc(rawText)+'</font></pre>'
       +'</body></html>';
     dl(wordDoc,'oola-handscript.doc','application/msword');
     showToast('\u{1F4DD} Downloaded \u2014 opens in Word!');return;
