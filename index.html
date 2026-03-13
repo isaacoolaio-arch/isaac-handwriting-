@@ -1451,21 +1451,21 @@ function exportAs(fmt){
     const leftLines=splitIdx>0?rawLines.slice(0,splitIdx):rawLines.slice(0,Math.ceil(rawLines.length/2));
     const rightLines=splitIdx>0?rawLines.slice(splitIdx):rawLines.slice(Math.ceil(rawLines.length/2));
     const maxRows=Math.max(leftLines.length,rightLines.length);
-    let bodyHtml='<table border="0" cellspacing="0" cellpadding="3" width="100%">';
-    if(docDate)bodyHtml+='<tr><td colspan="3" align="center"><font face="Courier New" size="2">'+esc(docDate)+'</font></td></tr>';
+    // Completely plain — no borders, no lines, no colours, no decoration
+    let rows='';
+    if(docDate) rows+='<tr><td colspan="2" align="center"><font face="Courier New" size="2">'+esc(docDate)+'</font></td></tr>';
     for(let r=0;r<maxRows;r++){
       const l=(leftLines[r]||'').trimEnd();
       const ri=(rightLines[r]||'').trimEnd();
-      bodyHtml+='<tr>';
-      bodyHtml+='<td width="50%" valign="top"><font face="Courier New" size="2">'+esc(l)+'</font></td>';
-      
-      bodyHtml+='<td width="50%" valign="top"><font face="Courier New" size="2">'+esc(ri)+'</font></td>';
-      bodyHtml+='</tr>';
+      rows+='<tr>';
+      rows+='<td width="50%" valign="top"><font face="Courier New" size="2">'+esc(l)+'</font></td>';
+      rows+='<td width="50%" valign="top"><font face="Courier New" size="2">'+esc(ri)+'</font></td>';
+      rows+='</tr>';
     }
-    bodyHtml+='</table>';
     const wordDoc='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Oola HandScript PRO</title></head>'
-      +'<body bgcolor="#ffffff" leftmargin="60" rightmargin="60" topmargin="40" marginwidth="60">'
-      +bodyHtml+'</body></html>';
+      +'<body bgcolor="#ffffff" leftmargin="60" rightmargin="60" topmargin="40">'
+      +'<table border="0" cellspacing="0" cellpadding="3" width="100%">'+rows+'</table>'
+      +'</body></html>';
     dl(wordDoc,'oola-handscript.doc','application/msword');
     showToast('\u{1F4DD} Downloaded \u2014 opens in Word!');return;
   }
