@@ -1025,8 +1025,28 @@ For financial ledgers specifically:
 - The difference/calculation row below a pair (e.g. "122.972") → rowType: "data" with label "Difference" or blank
 - Price column (e.g. "5185", "4800") → include in its own column
 
+TWO-COLUMN PAGES — VERY IMPORTANT:
+Many pages in this ledger have TWO side-by-side columns divided by a vertical pen line.
+- Left column: one person's records
+- Right column: another person's records
+- They run PARALLEL — same row height, side by side
+
+If you see a 2-column layout:
+- In rawText, output BOTH columns side by side on the same line using spaces/tabs to align them
+- Format: "LeftContent                    RightContent"
+- Each person's name should appear at the top of their column
+- Lines that only appear on one side should have the other side blank
+- Preserve the spatial layout so it looks like the original page
+
+Example rawText for a 2-column page:
+"10/03/26
+Winnie                         Donald
+Drop = 200,000                 Drop = 200,000
+200,000                        200,000
+Cash = 225,000                 Cash = 260,000"
+
 Return EXACTLY this JSON (no markdown, no extra text):
-{"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim full text","extractionNotes":""}`;
+{"documentType":"string","language":"string","pageInfo":"string","summary":{"title":null,"date":null,"headerValues":[{"label":"","value":""}],"totalRows":0,"notes":null},"hasTable":true,"tableHeaders":[""],"tableRows":[{"values":[""],"confidence":"high","rowType":"data"}],"rawText":"verbatim full text preserving 2-column layout if present","extractionNotes":""}` ;
 
     const r1=await callClaude(sys1,'Analyse this document completely. Return JSON only.',apiKey);
     setProgress(38);
