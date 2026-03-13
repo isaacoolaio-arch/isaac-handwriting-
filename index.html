@@ -840,6 +840,17 @@ td[contenteditable="true"]:focus{background:#fffde8;outline:2px solid var(--gold
 
 </div>
 </div>
+<!-- HISTORY PANEL -->
+<div style="max-width:1320px;margin:0 auto;padding:0 1.5rem 2rem;">
+  <div id="historyPanel" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem;padding-top:.5rem;border-top:1px solid var(--border);">
+      <span style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:600;color:var(--ink);">🕐 Recent Activity</span>
+      <button onclick="clearHistory()" style="font-size:.75rem;color:var(--muted);background:none;border:1px solid var(--border);cursor:pointer;padding:.2rem .6rem;border-radius:5px;">Clear All</button>
+    </div>
+    <div id="historyList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem;"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1814,6 +1825,7 @@ function showToast(m){
 /* ═══════ INIT ═══════ */
 document.addEventListener('DOMContentLoaded',()=>{
   updateNetStatus();
+  renderHistory();
   // Restore saved API key display
   if(getApiKey()){
     document.getElementById('akStatus').className='ak-status set';
